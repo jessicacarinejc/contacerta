@@ -1,4 +1,4 @@
-# Atualizações automáticas de versão pausadas para evitar abertura em massa de PRs.
+# Dependabot version updates are paused to prevent automatic PR floods.
 version: 2
 updates:
   - package-ecosystem: npm
