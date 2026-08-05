@@ -1,0 +1,1 @@
+export const isTauri=()=>typeof window!=='undefined'&&'__TAURI_INTERNALS__' in window;export const isAndroid=()=>/Android/i.test(navigator.userAgent);export const isMobileViewport=()=>window.matchMedia('(max-width: 767px)').matches;
