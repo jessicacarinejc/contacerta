@@ -29,6 +29,7 @@ jobs:
         with:
           workspaces: src-tauri
       - run: npm install --no-audit --no-fund
+      - run: npm run icons
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -65,6 +66,7 @@ jobs:
           workspaces: src-tauri
       - run: npm install --no-audit --no-fund
       - run: npm run android:init
+      - run: npm run icons
       - run: npm run android:build:apk
       - run: npm run android:build:aab
       - uses: softprops/action-gh-release@v2
