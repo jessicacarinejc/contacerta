@@ -1,6 +1,4 @@
 # Atualizações automáticas de versão pausadas para evitar abertura em massa de PRs.
-# Alertas e atualizações de segurança do repositório continuam sendo gerenciados
-# pelas configurações de segurança do GitHub.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -8,24 +6,15 @@ updates:
     open-pull-requests-limit: 0
     schedule:
       interval: monthly
-      day: monday
-      time: "09:00"
-      timezone: "America/Bahia"
 
   - package-ecosystem: cargo
     directory: "/src-tauri"
     open-pull-requests-limit: 0
     schedule:
       interval: monthly
-      day: wednesday
-      time: "09:00"
-      timezone: "America/Bahia"
 
   - package-ecosystem: github-actions
     directory: "/"
     open-pull-requests-limit: 0
     schedule:
       interval: monthly
-      day: friday
-      time: "09:00"
-      timezone: "America/Bahia"
