@@ -1,3 +1,6 @@
+# Atualizações automáticas de versão pausadas para evitar abertura em massa de PRs.
+# Alertas e atualizações de segurança do repositório continuam sendo gerenciados
+# pelas configurações de segurança do GitHub.
 version: 2
 updates:
   - package-ecosystem: npm
