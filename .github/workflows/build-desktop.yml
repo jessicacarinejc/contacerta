@@ -41,7 +41,7 @@ jobs:
           workspaces: src-tauri
       - run: npm install --no-audit --no-fund
       - run: npm run tauri:build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: conta-certa-${{ matrix.artifact }}
           path: |
