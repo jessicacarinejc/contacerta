@@ -1,0 +1,1 @@
+import { PageHeader } from '../components/PageHeader';import { DocumentImporter } from '../components/documents/DocumentImporter';export function DocumentsPage(){return <div className="page"><PageHeader title="Central de documentos" description="Leia PDFs e imagens, extraia dados e confirme lançamentos."/><DocumentImporter/></div>;}
