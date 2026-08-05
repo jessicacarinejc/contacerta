@@ -1,77 +1,183 @@
-name: Release builds
+name: Build and publish release
 
 on:
+  workflow_dispatch:
   push:
-    tags: ["v*"]
+    branches: [main]
+    paths:
+      - "src/**"
+      - "src-tauri/**"
+      - "public/**"
+      - "scripts/**"
+      - "package.json"
+      - "vite.config.ts"
+      - ".nvmrc"
+      - "rust-toolchain.toml"
+      - ".github/workflows/release.yml"
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   desktop:
+    name: Desktop ${{ matrix.name }}
     strategy:
       fail-fast: false
       matrix:
-        platform: [ubuntu-22.04, windows-latest, macos-latest]
-    runs-on: ${{ matrix.platform }}
+        include:
+          - os: ubuntu-22.04
+            name: Linux
+          - os: windows-latest
+            name: Windows
+          - os: macos-latest
+            name: macOS
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+
       - name: Install Linux dependencies
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
+
       - uses: dtolnay/rust-toolchain@stable
+
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-      - run: npm install --no-audit --no-fund
-      - run: npm run icons
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build Tauri package
+        run: npm run tauri:build
+
+      - uses: actions/upload-artifact@v4
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Conta Certa ${{ github.ref_name }}"
-          releaseBody: "Builds desktop e Android gerados automaticamente."
-          releaseDraft: true
-          prerelease: false
+          name: release-desktop-${{ matrix.name }}
+          path: src-tauri/target/release/bundle/**
+          if-no-files-found: error
+          retention-days: 14
 
   android:
-    needs: desktop
+    name: Android APK and AAB
     runs-on: ubuntu-22.04
     env:
       NDK_VERSION: 27.2.12479018
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
+
       - uses: android-actions/setup-android@v3
-      - run: |
+
+      - name: Install Android SDK components
+        run: |
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;${NDK_VERSION}"
           echo "NDK_HOME=${ANDROID_HOME}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-      - run: npm install --no-audit --no-fund
-      - run: npm run android:init
-      - run: npm run icons
-      - run: npm run android:build:apk
-      - run: npm run android:build:aab
-      - uses: softprops/action-gh-release@v2
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Initialize Android project
+        run: npm run android:init
+
+      - name: Build APK
+        run: npm run android:build:apk
+
+      - name: Build AAB
+        run: npm run android:build:aab
+
+      - uses: actions/upload-artifact@v4
         with:
-          draft: true
-          files: |
+          name: release-android
+          path: |
             src-tauri/gen/android/app/build/outputs/apk/**/*.apk
             src-tauri/gen/android/app/build/outputs/bundle/**/*.aab
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish GitHub release
+    needs: [desktop, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-assets
+
+      - name: Resolve release version
+        id: version
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish release and assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mapfile -t files < <(
+            find release-assets -type f \( \
+              -name '*.AppImage' -o \
+              -name '*.deb' -o \
+              -name '*.rpm' -o \
+              -name '*.msi' -o \
+              -name '*.exe' -o \
+              -name '*.dmg' -o \
+              -name '*.app.tar.gz' -o \
+              -name '*.apk' -o \
+              -name '*.aab' \
+            \) -print | sort
+          )
+
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "Nenhum instalador foi encontrado para publicar."
+            exit 1
+          fi
+
+          NOTES="Conta Certa ${VERSION}\n\nArtefatos gerados automaticamente para Linux, Windows, macOS e Android."
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${files[@]}" --clobber
+          else
+            gh release create "$TAG" "${files[@]}" \
+              --target "$GITHUB_SHA" \
+              --title "Conta Certa ${TAG}" \
+              --notes "$NOTES"
+          fi
