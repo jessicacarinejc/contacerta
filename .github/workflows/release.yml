@@ -69,7 +69,7 @@ jobs:
       - run: npm run icons
       - run: npm run android:build:apk
       - run: npm run android:build:aab
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           draft: true
           files: |
