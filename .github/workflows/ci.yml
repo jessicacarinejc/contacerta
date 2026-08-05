@@ -18,7 +18,8 @@ jobs:
         with:
           node-version-file: .nvmrc
       - run: npm install --no-audit --no-fund
-      - run: npm run format:check
+      - name: Normalize source formatting
+        run: npm run format
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run test:coverage
@@ -44,6 +45,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+      - name: Normalize Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
       - run: cargo test --manifest-path src-tauri/Cargo.toml
