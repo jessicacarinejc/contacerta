@@ -2,19 +2,36 @@ version: 2
 updates:
   - package-ecosystem: npm
     directory: "/"
+    open-pull-requests-limit: 1
     schedule:
-      interval: weekly
+      interval: monthly
+      day: monday
+      time: "09:00"
+      timezone: "America/Bahia"
     groups:
       frontend:
         patterns: ["*"]
+
   - package-ecosystem: cargo
     directory: "/src-tauri"
+    open-pull-requests-limit: 1
     schedule:
-      interval: weekly
+      interval: monthly
+      day: wednesday
+      time: "09:00"
+      timezone: "America/Bahia"
     groups:
       rust:
         patterns: ["*"]
+
   - package-ecosystem: github-actions
     directory: "/"
+    open-pull-requests-limit: 1
     schedule:
       interval: monthly
+      day: friday
+      time: "09:00"
+      timezone: "America/Bahia"
+    groups:
+      actions:
+        patterns: ["*"]
