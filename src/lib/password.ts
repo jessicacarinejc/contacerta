@@ -18,10 +18,14 @@ function base64ToBytes(value: string): Uint8Array {
   return bytes;
 }
 
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
+
 async function deriveHash(password: string, salt: Uint8Array, iterations: number): Promise<string> {
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
-    encoder.encode(password),
+    toArrayBuffer(encoder.encode(password)),
     'PBKDF2',
     false,
     ['deriveBits'],
@@ -31,7 +35,7 @@ async function deriveHash(password: string, salt: Uint8Array, iterations: number
     {
       name: 'PBKDF2',
       hash: 'SHA-256',
-      salt,
+      salt: toArrayBuffer(salt),
       iterations,
     },
     keyMaterial,
