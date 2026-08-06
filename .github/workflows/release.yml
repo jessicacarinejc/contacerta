@@ -1,7 +1,17 @@
-name: Build and publish release
+name: Build and publish versioned release
 
 on:
   workflow_dispatch:
+    inputs:
+      release_type:
+        description: Tipo do incremento semântico
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
   push:
     branches: [main]
     paths:
@@ -10,6 +20,7 @@ on:
       - "public/**"
       - "scripts/**"
       - "package.json"
+      - "package-lock.json"
       - "vite.config.ts"
       - ".nvmrc"
       - "rust-toolchain.toml"
@@ -19,12 +30,71 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: true
+  group: versioned-release-main
+  cancel-in-progress: false
 
 jobs:
+  prepare:
+    name: Resolve next version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve next semantic version
+        id: version
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TYPE: ${{ github.event.inputs.release_type || 'patch' }}
+        run: |
+          set -euo pipefail
+
+          latest="$({
+            gh release list --limit 100 --json tagName --jq '.[].tagName' 2>/dev/null || true
+          } | sed -nE 's/^v?([0-9]+\.[0-9]+\.[0-9]+)$/\1/p' | sort -V | tail -n 1)"
+
+          if [ -z "$latest" ]; then
+            latest="0.0.0"
+          fi
+
+          IFS='.' read -r major minor patch <<< "$latest"
+
+          case "$RELEASE_TYPE" in
+            major)
+              major=$((major + 1)); minor=0; patch=0
+              ;;
+            minor)
+              minor=$((minor + 1)); patch=0
+              ;;
+            patch)
+              patch=$((patch + 1))
+              ;;
+            *)
+              echo "Tipo de versão inválido: $RELEASE_TYPE"
+              exit 1
+              ;;
+          esac
+
+          version="${major}.${minor}.${patch}"
+          tag="v${version}"
+
+          if git rev-parse "$tag" >/dev/null 2>&1 || gh release view "$tag" >/dev/null 2>&1; then
+            echo "A versão calculada $tag já existe. A release não será sobrescrita."
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Próxima versão: $tag"
+
   desktop:
-    name: Desktop ${{ matrix.name }}
+    name: Desktop ${{ matrix.name }} v${{ needs.prepare.outputs.version }}
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -55,6 +125,14 @@ jobs:
         with:
           workspaces: src-tauri
 
+      - name: Apply release version
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          npm run release:sync
+
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
@@ -63,13 +141,14 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: release-desktop-${{ matrix.name }}
+          name: release-desktop-${{ matrix.name }}-v${{ needs.prepare.outputs.version }}
           path: src-tauri/target/release/bundle/**
           if-no-files-found: error
           retention-days: 14
 
   android:
-    name: Android APK and AAB
+    name: Android APK and AAB v${{ needs.prepare.outputs.version }}
+    needs: prepare
     runs-on: ubuntu-22.04
     env:
       NDK_VERSION: 27.2.12479018
@@ -100,6 +179,13 @@ jobs:
         with:
           workspaces: src-tauri
 
+      - name: Apply release version
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          npm run release:sync
+
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
@@ -114,7 +200,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: release-android
+          name: release-android-v${{ needs.prepare.outputs.version }}
           path: |
             src-tauri/gen/android/app/build/outputs/apk/**/*.apk
             src-tauri/gen/android/app/build/outputs/bundle/**/*.aab
@@ -122,36 +208,29 @@ jobs:
           retention-days: 14
 
   publish:
-    name: Publish GitHub release
-    needs: [desktop, android]
+    name: Publish immutable release ${{ needs.prepare.outputs.tag }}
+    needs: [prepare, desktop, android]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
         with:
-          node-version-file: .nvmrc
+          fetch-depth: 0
 
       - uses: actions/download-artifact@v4
         with:
           pattern: release-*
           path: release-assets
+          merge-multiple: true
 
-      - name: Resolve release version
-        id: version
-        shell: bash
-        run: |
-          VERSION="$(node -p "require('./package.json').version")"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
-
-      - name: Publish release and assets
+      - name: Publish new tag and release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.tag }}
-          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
+          set -euo pipefail
+
           mapfile -t files < <(
             find release-assets -type f \( \
               -name '*.AppImage' -o \
@@ -171,13 +250,17 @@ jobs:
             exit 1
           fi
 
-          NOTES="Conta Certa ${VERSION}\n\nArtefatos gerados automaticamente para Linux, Windows, macOS e Android."
-
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "${files[@]}" --clobber
-          else
-            gh release create "$TAG" "${files[@]}" \
-              --target "$GITHUB_SHA" \
-              --title "Conta Certa ${TAG}" \
-              --notes "$NOTES"
+          if git rev-parse "$TAG" >/dev/null 2>&1 || gh release view "$TAG" >/dev/null 2>&1; then
+            echo "A tag/release $TAG já existe. Releases existentes são imutáveis e não serão sobrescritas."
+            exit 1
           fi
+
+          previous="$(gh release list --limit 1 --json tagName --jq '.[0].tagName // empty')"
+          args=(release create "$TAG" "${files[@]}" --target "$GITHUB_SHA" --title "Conta Certa $TAG" --generate-notes)
+
+          if [ -n "$previous" ]; then
+            args+=(--notes-start-tag "$previous")
+          fi
+
+          gh "${args[@]}"
+          echo "Release $TAG publicada com ${#files[@]} artefatos."
