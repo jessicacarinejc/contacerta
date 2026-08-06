@@ -4,6 +4,17 @@
   "description": "Gestão financeira pessoal e profissional com controle de receitas, despesas, documentos e relatórios.",
   "icons": [
     {
+      "src": "/favicon-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/app-icon.png",
+      "sizes": "64x64",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
       "src": "/app-icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
