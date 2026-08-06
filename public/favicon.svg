@@ -13,7 +13,10 @@
       <path d="M214 742 C365 676 515 548 736 278" fill="none" stroke="#FFFFFF" stroke-width="104" stroke-linecap="round"/>
       <path d="M214 742 C365 676 515 548 736 278" fill="none" stroke="#092144" stroke-width="58" stroke-linecap="square"/>
       <path d="M704 310 L760 214 L823 331 Z" fill="#092144"/>
-      <text x="378" y="438" fill="#279B48" font-family="Arial, Helvetica, sans-serif" font-size="210" font-weight="700" text-anchor="middle">$</text>
+      <g fill="none" stroke="#279B48" stroke-width="36" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M421 292 C370 273 326 294 326 340 C326 383 362 402 411 417 C462 433 491 460 491 503 C491 552 449 581 383 565"/>
+        <path d="M407 255 V610"/>
+      </g>
     </g>
   </defs>
   <use href="#conta-certa-mark"/>
