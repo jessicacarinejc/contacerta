@@ -38,7 +38,11 @@ function base64ToBytes(value: string): Uint8Array {
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
-async function derivePasswordHash(password: string, salt: Uint8Array): Promise<string> {
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.slice().buffer as ArrayBuffer;
+}
+
+async function derivePasswordHash(password: string, salt: ArrayBuffer): Promise<string> {
   const material = await crypto.subtle.importKey(
     'raw',
     encoder.encode(password),
@@ -61,11 +65,15 @@ async function derivePasswordHash(password: string, salt: Uint8Array): Promise<s
 
 async function createCredential(password: string): Promise<StoredCredential> {
   const salt = crypto.getRandomValues(new Uint8Array(16));
-  return { salt: bytesToBase64(salt), hash: await derivePasswordHash(password, salt) };
+  return {
+    salt: bytesToBase64(salt),
+    hash: await derivePasswordHash(password, toArrayBuffer(salt)),
+  };
 }
 
 async function verifyCredential(password: string, credential: StoredCredential): Promise<boolean> {
-  const candidate = await derivePasswordHash(password, base64ToBytes(credential.salt));
+  const salt = toArrayBuffer(base64ToBytes(credential.salt));
+  const candidate = await derivePasswordHash(password, salt);
   if (candidate.length !== credential.hash.length) return false;
   let difference = 0;
   for (let index = 0; index < candidate.length; index += 1) {
