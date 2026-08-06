@@ -4,10 +4,12 @@ import {
   Bell,
   BriefcaseBusiness,
   ChartNoAxesCombined,
+  ChevronDown,
   CreditCard,
   FileScan,
   Gauge,
   Landmark,
+  LogOut,
   Menu,
   PiggyBank,
   ReceiptText,
@@ -16,11 +18,12 @@ import {
   Target,
   TrendingDown,
   TrendingUp,
+  UserRound,
   WalletCards,
   X,
 } from 'lucide-react';
 import { useState } from 'react';
-import { useFinanceStore } from '../../store/useFinanceStore';
+import { useAuthStore } from '../../store/useAuthStore';
 
 const navigation = [
   ['/', 'Dashboard', Gauge],
@@ -46,12 +49,7 @@ function Logo() {
   return (
     <div className="brand">
       <div className="brand-lockup">
-        <img
-          src="/branding/logo-horizontal.svg"
-          alt="Conta Certa — Gestão Financeira"
-          width="1240"
-          height="360"
-        />
+        <img src="/branding/logo-horizontal.svg" alt="Conta Certa — Gestão Financeira" />
       </div>
     </div>
   );
@@ -78,7 +76,16 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
 
 export function AppShell({ children }: PropsWithChildren) {
   const [open, setOpen] = useState(false);
-  const name = useFinanceStore((state) => state.settings.userName);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profile = useAuthStore((state) => state.profile);
+  const logout = useAuthStore((state) => state.logout);
+  const name = profile?.name ?? 'Usuário';
+  const initials = name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase();
 
   return (
     <div className="app-shell">
@@ -120,7 +127,7 @@ export function AppShell({ children }: PropsWithChildren) {
             <Menu />
           </button>
           <div className="topbar-greeting">
-            <strong>Olá, {name}! 👋</strong>
+            <strong>Olá, {name.split(' ')[0]}! 👋</strong>
             <span>Veja como está sua vida financeira hoje.</span>
           </div>
           <div className="topbar-actions">
@@ -128,10 +135,44 @@ export function AppShell({ children }: PropsWithChildren) {
               <Bell size={20} />
               <i>3</i>
             </button>
-            <div className="avatar">{name.slice(0, 1).toUpperCase()}</div>
-            <div className="profile-text">
-              <strong>{name}</strong>
-              <span>Conta local</span>
+            <div className="profile-menu-wrap">
+              <button
+                className="profile-trigger"
+                type="button"
+                aria-expanded={profileOpen}
+                onClick={() => setProfileOpen((current) => !current)}
+              >
+                <span className="avatar">{initials}</span>
+                <span className="profile-text">
+                  <strong>{name}</strong>
+                  <span>Administrador</span>
+                </span>
+                <ChevronDown size={16} />
+              </button>
+
+              {profileOpen && (
+                <div className="profile-menu">
+                  <div className="profile-menu-header">
+                    <span className="avatar">{initials}</span>
+                    <div>
+                      <strong>{name}</strong>
+                      <span>{profile?.email}</span>
+                    </div>
+                  </div>
+                  <NavLink to="/configuracoes" onClick={() => setProfileOpen(false)}>
+                    <UserRound size={17} /> Perfil e segurança
+                  </NavLink>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProfileOpen(false);
+                      logout();
+                    }}
+                  >
+                    <LogOut size={17} /> Sair
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </header>
