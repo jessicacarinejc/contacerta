@@ -1,0 +1,20 @@
+{
+  "name": "Conta Certa — Gestão Financeira",
+  "short_name": "Conta Certa",
+  "description": "Gestão financeira pessoal e profissional com controle de receitas, despesas, documentos e relatórios.",
+  "icons": [
+    {
+      "src": "/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "theme_color": "#092144",
+  "background_color": "#FFFFFF",
+  "display": "standalone",
+  "orientation": "any",
+  "start_url": "/",
+  "scope": "/",
+  "lang": "pt-BR"
+}
