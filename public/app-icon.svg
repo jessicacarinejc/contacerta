@@ -4,7 +4,8 @@
     <path d="M214 606A342 342 0 1 1 817 338" fill="none" stroke="#092144" stroke-width="58" stroke-linecap="round"/>
     <path d="M226 625C338 493 449 491 548 418C650 343 713 238 788 137" fill="none" stroke="#279B48" stroke-width="42" stroke-linecap="round" stroke-linejoin="round"/>
     <path d="M198 640L276 610L257 688Z" fill="#279B48"/>
-    <text x="315" y="545" fill="#279B48" font-family="Arial,Helvetica,sans-serif" font-size="290" font-weight="800">$</text>
+    <path d="M447 258V606" fill="none" stroke="#279B48" stroke-width="36" stroke-linecap="round"/>
+    <path d="M538 327C518 296 485 280 447 280C389 280 350 309 350 354C350 399 387 416 449 431C511 446 549 466 549 514C549 561 509 592 447 592C401 592 363 574 337 540" fill="none" stroke="#279B48" stroke-width="42" stroke-linecap="round" stroke-linejoin="round"/>
     <rect x="607" y="505" width="64" height="140" rx="16" fill="#279B48"/>
     <rect x="696" y="434" width="64" height="211" rx="16" fill="#279B48"/>
     <rect x="785" y="350" width="64" height="295" rx="16" fill="#279B48"/>
