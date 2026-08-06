@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title description" viewBox="0 0 1000 1200">
+<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title description" viewBox="0 0 1000 1100">
   <title id="title">Conta Certa</title>
   <desc id="description">Conta Certa — Gestão Financeira</desc>
-  <image href="../logo.svg" x="170" y="70" width="660" height="640" preserveAspectRatio="xMidYMid meet" />
+  <rect width="1000" height="1100" rx="48" fill="#FFFFFF"/>
+  <image href="../app-icon.svg" x="200" y="70" width="600" height="600" preserveAspectRatio="xMidYMid meet"/>
   <g font-family="Inter, Montserrat, Arial, sans-serif" text-anchor="middle">
-    <text x="500" y="830" fill="#092144" font-size="112" font-weight="800" letter-spacing="20">CONTA CERTA</text>
-    <text x="500" y="945" fill="#279B48" font-size="52" font-weight="600" letter-spacing="18">GESTÃO</text>
-    <text x="500" y="1025" fill="#279B48" font-size="52" font-weight="600" letter-spacing="18">FINANCEIRA</text>
+    <text x="500" y="790" fill="#092144" font-size="88" font-weight="800" letter-spacing="12">CONTA CERTA</text>
+    <text x="500" y="884" fill="#279B48" font-size="38" font-weight="700" letter-spacing="14">GESTÃO</text>
+    <text x="500" y="948" fill="#279B48" font-size="38" font-weight="700" letter-spacing="14">FINANCEIRA</text>
   </g>
 </svg>
