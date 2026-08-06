@@ -1,0 +1,111 @@
+name: Render and validate branding assets
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agent/fix-branding-splash-autoversion
+    paths:
+      - "public/app-icon.svg"
+      - "public/favicon.svg"
+      - "public/branding/logo-full.svg"
+      - "public/branding/logo-horizontal.svg"
+      - "public/branding/logo-symbol.svg"
+      - "public/branding/splash-*.svg"
+      - ".github/workflows/render-brand-assets.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: render-brand-assets-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render:
+    name: Generate PNG, ICO, ICNS and native icons
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Install image tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y librsvg2-bin imagemagick
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install project dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Render web and PWA assets
+        run: |
+          set -euo pipefail
+
+          rsvg-convert -w 1024 -h 1024 public/app-icon.svg -o public/app-icon.png
+          rsvg-convert -w 16 -h 16 public/favicon.svg -o public/favicon-16x16.png
+          rsvg-convert -w 32 -h 32 public/favicon.svg -o public/favicon-32x32.png
+          rsvg-convert -w 48 -h 48 public/favicon.svg -o public/favicon-48x48.png
+          rsvg-convert -w 180 -h 180 public/app-icon.svg -o public/apple-touch-icon.png
+          rsvg-convert -w 192 -h 192 public/app-icon.svg -o public/android-chrome-192x192.png
+          rsvg-convert -w 512 -h 512 public/app-icon.svg -o public/android-chrome-512x512.png
+
+          convert public/favicon-16x16.png public/favicon-32x32.png public/favicon-48x48.png public/favicon.ico
+
+      - name: Generate Tauri desktop and Android icons
+        run: npm run icons
+
+      - name: Validate generated assets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          required=(
+            public/app-icon.png
+            public/favicon.ico
+            public/favicon-16x16.png
+            public/favicon-32x32.png
+            public/apple-touch-icon.png
+            public/android-chrome-192x192.png
+            public/android-chrome-512x512.png
+            src-tauri/icons/icon.png
+            src-tauri/icons/icon.ico
+            src-tauri/icons/icon.icns
+          )
+
+          for file in "${required[@]}"; do
+            test -s "$file" || { echo "Ativo ausente ou vazio: $file"; exit 1; }
+          done
+
+          identify public/app-icon.png public/favicon-32x32.png public/apple-touch-icon.png public/android-chrome-512x512.png
+
+      - name: Commit generated binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            public/app-icon.png \
+            public/favicon.ico \
+            public/favicon-16x16.png \
+            public/favicon-32x32.png \
+            public/favicon-48x48.png \
+            public/apple-touch-icon.png \
+            public/android-chrome-192x192.png \
+            public/android-chrome-512x512.png \
+            src-tauri/icons
+
+          if git diff --cached --quiet; then
+            echo "Os ativos binários já estão sincronizados."
+            exit 0
+          fi
+
+          git commit -m "chore: render corrected branding assets"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
