@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Conta Certa — Gestão Financeira" viewBox="0 0 1080 1920">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="38%" r="72%">
+      <stop offset="0" stop-color="#1c7441" />
+      <stop offset="0.5" stop-color="#0d3155" />
+      <stop offset="1" stop-color="#06172f" />
+    </radialGradient>
+  </defs>
+  <rect width="1080" height="1920" fill="url(#glow)" />
+  <rect x="120" y="420" width="840" height="1000" rx="72" fill="#FFFFFF" opacity="0.98" />
+  <image href="logo-full.svg" x="220" y="520" width="640" height="768" preserveAspectRatio="xMidYMid meet" />
+</svg>
