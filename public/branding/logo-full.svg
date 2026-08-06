@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title description" viewBox="0 0 1000 1200">
+  <title id="title">Conta Certa</title>
+  <desc id="description">Conta Certa — Gestão Financeira</desc>
+  <image href="../logo.svg" x="170" y="70" width="660" height="640" preserveAspectRatio="xMidYMid meet" />
+  <g font-family="Inter, Montserrat, Arial, sans-serif" text-anchor="middle">
+    <text x="500" y="830" fill="#092144" font-size="112" font-weight="800" letter-spacing="20">CONTA CERTA</text>
+    <text x="500" y="945" fill="#279B48" font-size="52" font-weight="600" letter-spacing="18">GESTÃO</text>
+    <text x="500" y="1025" fill="#279B48" font-size="52" font-weight="600" letter-spacing="18">FINANCEIRA</text>
+  </g>
+</svg>
