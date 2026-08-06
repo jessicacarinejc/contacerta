@@ -5,6 +5,7 @@ import './styles.css';
 import './styles-modules.css';
 import './styles-responsive.css';
 import './branding.css';
+import './theme.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
