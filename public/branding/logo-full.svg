@@ -1,10 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title description" viewBox="0 0 1000 1200">
-  <title id="title">Conta Certa</title>
-  <desc id="description">Conta Certa — Gestão Financeira</desc>
-  <image href="../logo.svg" x="170" y="70" width="660" height="640" preserveAspectRatio="xMidYMid meet" />
-  <g font-family="Inter, Montserrat, Arial, sans-serif" text-anchor="middle">
-    <text x="500" y="830" fill="#092144" font-size="112" font-weight="800" letter-spacing="20">CONTA CERTA</text>
-    <text x="500" y="945" fill="#279B48" font-size="52" font-weight="600" letter-spacing="18">GESTÃO</text>
-    <text x="500" y="1025" fill="#279B48" font-size="52" font-weight="600" letter-spacing="18">FINANCEIRA</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" role="img" aria-label="Conta Certa — Gestão Financeira">
+  <rect width="1000" height="1000" fill="none"/>
+  <g transform="translate(190 40) scale(.62)">
+    <path d="M214 606A342 342 0 1 1 817 338" fill="none" stroke="#092144" stroke-width="58" stroke-linecap="round"/>
+    <path d="M226 625C338 493 449 491 548 418C650 343 713 238 788 137" fill="none" stroke="#279B48" stroke-width="42" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M198 640L276 610L257 688Z" fill="#279B48"/>
+    <text x="315" y="545" fill="#279B48" font-family="Arial,Helvetica,sans-serif" font-size="290" font-weight="800">$</text>
+    <rect x="607" y="505" width="64" height="140" rx="16" fill="#279B48"/>
+    <rect x="696" y="434" width="64" height="211" rx="16" fill="#279B48"/>
+    <rect x="785" y="350" width="64" height="295" rx="16" fill="#279B48"/>
   </g>
+  <text x="500" y="760" text-anchor="middle" fill="#092144" font-family="Arial,Helvetica,sans-serif" font-size="104" font-weight="800" letter-spacing="15">CONTA CERTA</text>
+  <text x="500" y="850" text-anchor="middle" fill="#279B48" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="700" letter-spacing="18">GESTÃO FINANCEIRA</text>
 </svg>
