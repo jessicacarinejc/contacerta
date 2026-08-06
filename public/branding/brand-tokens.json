@@ -1,0 +1,9 @@
+{
+  "brand": "Conta Certa",
+  "tagline": "Gestão Financeira",
+  "colors": {
+    "navy": { "hex": "#092144", "rgb": [9, 33, 68] },
+    "green": { "hex": "#279B48", "rgb": [39, 155, 72] },
+    "white": { "hex": "#FFFFFF", "rgb": [255, 255, 255] }
+  }
+}
