@@ -12,8 +12,9 @@ on:
           - patch
           - minor
           - major
-  push:
+  pull_request:
     branches: [main]
+    types: [closed]
 
 permissions:
   contents: write
@@ -25,6 +26,7 @@ concurrency:
 jobs:
   prepare:
     name: Resolve next version
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
