@@ -178,7 +178,7 @@ export const useFinanceStore = create<FinanceState>()(
     {
       name: 'conta-certa-finance-state',
       storage: createJSONStorage(() => platformStorage),
-      version: 2,
+      version: 1,
     },
   ),
 );
