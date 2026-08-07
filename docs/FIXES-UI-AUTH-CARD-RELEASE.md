@@ -7,7 +7,8 @@ Esta alteração corrige os problemas identificados após a PR #13.
 - usa o `logo-full.svg` oficial no sidebar sem forçar proporção horizontal;
 - preserva `object-fit: contain` e proporções naturais da marca;
 - substitui a fonte vetorial do ícone da aplicação pelo `app-icon.svg` oficial;
-- os builds Tauri executam `npm run icons`, regenerando os ícones nativos desktop e Android a partir dessa fonte oficial.
+- substitui também `public/app-icon.png`, `public/android-chrome-512x512.png` e `src-tauri/icons/icon.png` pelo símbolo oficial;
+- os builds Tauri executam `npm run icons`, regenerando os demais ícones nativos desktop e Android a partir da fonte oficial.
 
 ## Tema
 
@@ -32,7 +33,8 @@ Esta alteração corrige os problemas identificados após a PR #13.
 
 ## Release e versionamento
 
-- o workflow de release passa a executar em todo push para `main`, sem filtro de paths;
+- o workflow de release passa a executar quando uma pull request é efetivamente mesclada na `main`, evitando depender do evento `push` que pode ser suprimido por integrações;
+- cada PR mesclada gera exatamente uma nova release;
 - cada execução calcula a próxima versão SemVer a partir das releases existentes;
 - o padrão é incremento `patch`; execução manual permite `minor` ou `major`;
 - uma release/tag existente nunca é sobrescrita.
