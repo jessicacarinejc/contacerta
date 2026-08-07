@@ -43,6 +43,18 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run android:init
 
+      - name: Generate and verify Tauri icons
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run icons
+          test -s src-tauri/icons/32x32.png
+          test -s src-tauri/icons/128x128.png
+          test -s src-tauri/icons/128x128@2x.png
+          test -s src-tauri/icons/icon.icns
+          test -s src-tauri/icons/icon.ico
+          echo "Tauri icon set generated successfully."
+
       - name: Configure temporary signing for PR artifact
         shell: bash
         run: |
