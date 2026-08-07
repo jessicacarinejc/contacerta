@@ -7,6 +7,7 @@ on:
       - "src/**"
       - "src-tauri/**"
       - "scripts/ensure-android.mjs"
+      - "scripts/prepare-android-signing.mjs"
       - "package.json"
       - ".github/workflows/build-android.yml"
 
@@ -18,6 +19,7 @@ jobs:
     runs-on: ubuntu-22.04
     env:
       NDK_VERSION: 27.2.12479018
+      BUILD_TOOLS_VERSION: 35.0.0
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,24 +32,75 @@ jobs:
       - uses: android-actions/setup-android@v3
       - name: Install Android SDK components
         run: |
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;${NDK_VERSION}"
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;${BUILD_TOOLS_VERSION}" "ndk;${NDK_VERSION}"
           echo "NDK_HOME=${ANDROID_HOME}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+          targets: aarch64-linux-android,armv7-linux-androideabi
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
       - run: npm install --no-audit --no-fund
       - run: npm run android:init
-      - name: Build universal APK
+
+      - name: Configure temporary signing for PR artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYSTORE="$RUNNER_TEMP/conta-certa-pr.jks"
+          PASSWORD="conta-certa-pr-build"
+          keytool -genkeypair -noprompt \
+            -keystore "$KEYSTORE" \
+            -storepass "$PASSWORD" \
+            -keypass "$PASSWORD" \
+            -alias contacerta-pr \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 3650 \
+            -dname "CN=Conta Certa PR, OU=CI, O=Conta Certa, L=Santo Antonio de Jesus, ST=BA, C=BR"
+          export ANDROID_KEY_BASE64="$(base64 -w0 "$KEYSTORE")"
+          export ANDROID_KEY_ALIAS="contacerta-pr"
+          export ANDROID_KEY_PASSWORD="$PASSWORD"
+          export ANDROID_STORE_PASSWORD="$PASSWORD"
+          node scripts/prepare-android-signing.mjs --required
+
+      - name: Build optimized ARM64 APK
         run: npm run android:build:apk
-      - name: Build universal AAB
+
+      - name: Build phone AAB
         run: npm run android:build:aab
+
+      - name: Validate Android packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' ! -name '*unsigned*' | head -n 1)"
+          AAB="$(find src-tauri/gen/android/app/build/outputs/bundle -type f -name '*.aab' | head -n 1)"
+
+          test -n "$APK" || { echo "APK assinado não encontrado"; exit 1; }
+          test -n "$AAB" || { echo "AAB não encontrado"; exit 1; }
+
+          "${ANDROID_HOME}/build-tools/${BUILD_TOOLS_VERSION}/apksigner" verify --verbose --print-certs "$APK"
+          jarsigner -verify -strict "$AAB"
+
+          APK_BYTES="$(stat -c%s "$APK")"
+          AAB_BYTES="$(stat -c%s "$AAB")"
+          APK_MAX=$((80 * 1024 * 1024))
+          AAB_MAX=$((100 * 1024 * 1024))
+
+          echo "APK: $((APK_BYTES / 1024 / 1024)) MB"
+          echo "AAB: $((AAB_BYTES / 1024 / 1024)) MB"
+
+          test "$APK_BYTES" -le "$APK_MAX" || { echo "APK excede 80 MB; publicação bloqueada"; exit 1; }
+          test "$AAB_BYTES" -le "$AAB_MAX" || { echo "AAB excede 100 MB; publicação bloqueada"; exit 1; }
+
+          mkdir -p dist-android
+          cp "$APK" dist-android/Conta-Certa-PR-arm64.apk
+          cp "$AAB" dist-android/Conta-Certa-PR.aab
+
       - uses: actions/upload-artifact@v4
         with:
-          name: conta-certa-android
-          path: |
-            src-tauri/gen/android/app/build/outputs/apk/**/*.apk
-            src-tauri/gen/android/app/build/outputs/bundle/**/*.aab
+          name: conta-certa-android-installable
+          path: dist-android/*
           if-no-files-found: error
+          retention-days: 14
