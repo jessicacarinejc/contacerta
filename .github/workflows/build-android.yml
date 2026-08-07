@@ -93,7 +93,10 @@ jobs:
           test -n "$AAB" || { echo "AAB não encontrado"; exit 1; }
 
           "${ANDROID_HOME}/build-tools/${BUILD_TOOLS_VERSION}/apksigner" verify --verbose --print-certs "$APK"
-          jarsigner -verify -strict "$AAB"
+          # The PR keystore uses a self-signed CI certificate. Verify bundle
+          # signature integrity without treating the expected trust-chain warning
+          # as an invalid AAB.
+          jarsigner -verify "$AAB"
 
           APK_BYTES="$(stat -c%s "$APK")"
           AAB_BYTES="$(stat -c%s "$AAB")"
