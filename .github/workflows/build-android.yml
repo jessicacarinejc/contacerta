@@ -8,6 +8,7 @@ on:
       - "src-tauri/**"
       - "scripts/ensure-android.mjs"
       - "package.json"
+      - ".github/android/**"
       - ".github/workflows/build-android.yml"
 
 permissions:
@@ -54,34 +55,44 @@ jobs:
           test -s src-tauri/icons/icon.ico
           echo "Tauri icon set generated successfully."
 
-      - name: Build installable ARM64 APK without production signing secrets
+      - name: Build optimized unsigned ARM64 release APK
         run: npm run android:build:apk
 
-      - name: Validate and package Android APK
+      - name: Apply local development signature and validate APK
         shell: bash
         run: |
           set -euo pipefail
-          APK="$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' ! -name '*unsigned*' | head -n 1)"
 
-          test -n "$APK" || { echo "APK Android instalável não encontrado"; exit 1; }
+          UNSIGNED="$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*unsigned*.apk' | head -n 1)"
+          test -n "$UNSIGNED" || { echo "APK release unsigned não encontrado"; exit 1; }
 
-          # Android requires every installable APK to carry a package signature.
-          # Debug builds use the Android SDK debug key automatically and do not
-          # require Play Store credentials or repository secrets.
-          "${ANDROID_HOME}/build-tools/${BUILD_TOOLS_VERSION}/apksigner" verify --verbose "$APK"
+          KEYSTORE="$RUNNER_TEMP/conta-certa-dev.jks"
+          ALIGNED="$RUNNER_TEMP/conta-certa-aligned.apk"
+          FINAL="dist-android/Conta-Certa-PR-arm64.apk"
 
-          APK_BYTES="$(stat -c%s "$APK")"
+          base64 -d .github/android/conta-certa-dev.jks.b64 > "$KEYSTORE"
+          mkdir -p dist-android
+
+          "${ANDROID_HOME}/build-tools/${BUILD_TOOLS_VERSION}/zipalign" -p -f 4 "$UNSIGNED" "$ALIGNED"
+          "${ANDROID_HOME}/build-tools/${BUILD_TOOLS_VERSION}/apksigner" sign \
+            --ks "$KEYSTORE" \
+            --ks-key-alias contacerta-dev \
+            --ks-pass pass:contacerta-dev \
+            --key-pass pass:contacerta-dev \
+            --out "$FINAL" \
+            "$ALIGNED"
+
+          "${ANDROID_HOME}/build-tools/${BUILD_TOOLS_VERSION}/apksigner" verify --verbose --print-certs "$FINAL"
+
+          APK_BYTES="$(stat -c%s "$FINAL")"
           APK_MAX=$((80 * 1024 * 1024))
 
-          echo "APK ARM64: $((APK_BYTES / 1024 / 1024)) MB"
+          echo "APK ARM64 otimizado: $((APK_BYTES / 1024 / 1024)) MB"
           test "$APK_BYTES" -le "$APK_MAX" || { echo "APK excede 80 MB; publicação bloqueada"; exit 1; }
-
-          mkdir -p dist-android
-          cp "$APK" dist-android/Conta-Certa-PR-arm64.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: conta-certa-android-installable
-          path: dist-android/*
+          path: dist-android/Conta-Certa-PR-arm64.apk
           if-no-files-found: error
           retention-days: 14
