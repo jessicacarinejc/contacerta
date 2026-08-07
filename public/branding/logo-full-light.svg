@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Conta Certa — Gestão Financeira" viewBox="0 0 1100 1080">
+  <defs>
+    <clipPath id="mark-clip">
+      <circle cx="512" cy="512" r="346" />
+    </clipPath>
+  </defs>
+  <g transform="translate(220 20) scale(0.645)">
+    <circle cx="512" cy="512" r="346" fill="none" stroke="#FFFFFF" stroke-width="52" />
+    <g clip-path="url(#mark-clip)">
+      <rect x="350" y="655" width="105" height="250" fill="#279B48" />
+      <rect x="485" y="555" width="105" height="350" fill="#279B48" />
+      <rect x="620" y="425" width="105" height="480" fill="#279B48" />
+      <rect x="755" y="300" width="105" height="605" fill="#279B48" />
+    </g>
+    <path d="M214 742 C365 676 515 548 736 278" fill="none" stroke="#092144" stroke-width="104" stroke-linecap="round" />
+    <path d="M214 742 C365 676 515 548 736 278" fill="none" stroke="#FFFFFF" stroke-width="58" stroke-linecap="square" />
+    <path d="M704 310 L760 214 L823 331 Z" fill="#FFFFFF" />
+    <text x="378" y="438" fill="#279B48" font-family="Arial, Helvetica, sans-serif" font-size="210" font-weight="700" text-anchor="middle">$</text>
+  </g>
+  <text x="550" y="815" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="92" font-weight="800" letter-spacing="18" text-anchor="middle">CONTA CERTA</text>
+  <text x="550" y="935" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="43" font-weight="600" letter-spacing="18" text-anchor="middle">GESTÃO</text>
+  <text x="550" y="1005" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="43" font-weight="600" letter-spacing="18" text-anchor="middle">FINANCEIRA</text>
+</svg>
