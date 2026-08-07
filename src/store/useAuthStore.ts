@@ -75,6 +75,7 @@ async function verifyCredential(password: string, credential: StoredCredential):
   const salt = toArrayBuffer(base64ToBytes(credential.salt));
   const candidate = await derivePasswordHash(password, salt);
   if (candidate.length !== credential.hash.length) return false;
+
   let difference = 0;
   for (let index = 0; index < candidate.length; index += 1) {
     difference |= candidate.charCodeAt(index) ^ credential.hash.charCodeAt(index);
@@ -88,6 +89,7 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       credential: null,
       isAuthenticated: false,
+
       async register({ name, email, password }) {
         const credential = await createCredential(password);
         set({
@@ -101,19 +103,24 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: true,
         });
       },
+
       async login(email, password) {
         const { user, credential } = get();
         if (!user || !credential || user.email !== email.trim().toLowerCase()) return false;
+
         const valid = await verifyCredential(password, credential);
         if (valid) set({ isAuthenticated: true });
         return valid;
       },
+
       logout() {
         set({ isAuthenticated: false });
       },
+
       updateProfile(data) {
         set((state) => ({ user: state.user ? { ...state.user, ...data } : null }));
       },
+
       async changePassword(currentPassword, nextPassword) {
         const { credential } = get();
         if (!credential || !(await verifyCredential(currentPassword, credential))) return false;
@@ -127,7 +134,11 @@ export const useAuthStore = create<AuthState>()(
       partialize: (state) => ({
         user: state.user,
         credential: state.credential,
-        isAuthenticated: state.isAuthenticated,
+      }),
+      merge: (persistedState, currentState) => ({
+        ...currentState,
+        ...(persistedState as Partial<AuthState>),
+        isAuthenticated: false,
       }),
     },
   ),

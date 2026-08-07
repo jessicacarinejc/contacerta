@@ -12,19 +12,9 @@ on:
           - patch
           - minor
           - major
-  push:
+  pull_request:
     branches: [main]
-    paths:
-      - "src/**"
-      - "src-tauri/**"
-      - "public/**"
-      - "scripts/**"
-      - "package.json"
-      - "package-lock.json"
-      - "vite.config.ts"
-      - ".nvmrc"
-      - "rust-toolchain.toml"
-      - ".github/workflows/release.yml"
+    types: [closed]
 
 permissions:
   contents: write
@@ -36,6 +26,7 @@ concurrency:
 jobs:
   prepare:
     name: Resolve next version
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}

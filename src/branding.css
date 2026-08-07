@@ -17,11 +17,15 @@
 
 .brand {
   width: 100%;
-  padding: 2px 4px 20px;
+  display: block;
+  padding: 2px 4px 18px;
 }
 
 .brand-lockup {
   width: 100%;
+  min-height: 136px;
+  display: grid;
+  place-items: center;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 14px;
@@ -33,9 +37,12 @@
 .brand img {
   display: block;
   width: 100%;
-  height: auto;
-  aspect-ratio: 1240 / 360;
+  height: 132px;
+  max-width: 100%;
+  padding: 8px 18px;
+  aspect-ratio: auto;
   object-fit: contain;
+  object-position: center;
 }
 
 .nav-link.active {
@@ -63,8 +70,17 @@
 
 .drawer-header .brand {
   flex: 1;
-  max-width: 220px;
+  max-width: 190px;
   padding: 0;
+}
+
+.drawer-header .brand-lockup {
+  min-height: 92px;
+}
+
+.drawer-header .brand-lockup img {
+  height: 88px;
+  padding: 5px 12px;
 }
 
 @media (max-width: 760px) {
