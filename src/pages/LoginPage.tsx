@@ -45,7 +45,7 @@ export function LoginPage() {
   return (
     <main className="auth-page">
       <section className="auth-visual" aria-label="Conta Certa">
-        <img src="/branding/logo-full.svg" alt="Conta Certa — Gestão Financeira" />
+        <img src="/branding/logo-full-light.svg" alt="Conta Certa — Gestão Financeira" />
         <div>
           <h1>Sua vida financeira protegida e sob controle.</h1>
           <p>Organize receitas, despesas, documentos, metas e decisões em um único ambiente.</p>
