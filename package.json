@@ -16,7 +16,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "npm run format && npm run lint && npm run typecheck && npm run test && npm run build",
-    "icons": "tauri icon public/app-icon.png --output src-tauri/icons",
+    "icons": "tauri icon public/app-icon.svg --output src-tauri/icons",
     "tauri": "tauri",
     "tauri:dev": "npm run icons && tauri dev",
     "tauri:build": "npm run icons && tauri build",
