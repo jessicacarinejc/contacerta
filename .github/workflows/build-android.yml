@@ -58,7 +58,7 @@ jobs:
       - name: Build optimized unsigned ARM64 release APK
         run: npm run android:build:apk
 
-      - name: Apply local development signature and validate APK
+      - name: Apply temporary CI signature and validate APK
         shell: bash
         run: |
           set -euo pipefail
@@ -66,19 +66,28 @@ jobs:
           UNSIGNED="$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*unsigned*.apk' | head -n 1)"
           test -n "$UNSIGNED" || { echo "APK release unsigned não encontrado"; exit 1; }
 
-          KEYSTORE="$RUNNER_TEMP/conta-certa-dev.jks"
+          KEYSTORE="$RUNNER_TEMP/conta-certa-ci.jks"
+          PASSWORD="conta-certa-ci-build"
           ALIGNED="$RUNNER_TEMP/conta-certa-aligned.apk"
           FINAL="dist-android/Conta-Certa-PR-arm64.apk"
 
-          base64 -d .github/android/conta-certa-dev.jks.b64 > "$KEYSTORE"
-          mkdir -p dist-android
+          keytool -genkeypair -noprompt \
+            -keystore "$KEYSTORE" \
+            -storepass "$PASSWORD" \
+            -keypass "$PASSWORD" \
+            -alias contacerta-ci \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 3650 \
+            -dname "CN=Conta Certa CI, OU=Direct Distribution, O=Conta Certa, L=Santo Antonio de Jesus, ST=BA, C=BR"
 
+          mkdir -p dist-android
           "${ANDROID_HOME}/build-tools/${BUILD_TOOLS_VERSION}/zipalign" -p -f 4 "$UNSIGNED" "$ALIGNED"
           "${ANDROID_HOME}/build-tools/${BUILD_TOOLS_VERSION}/apksigner" sign \
             --ks "$KEYSTORE" \
-            --ks-key-alias contacerta-dev \
-            --ks-pass pass:contacerta-dev \
-            --key-pass pass:contacerta-dev \
+            --ks-key-alias contacerta-ci \
+            --ks-pass pass:"$PASSWORD" \
+            --key-pass pass:"$PASSWORD" \
             --out "$FINAL" \
             "$ALIGNED"
 
