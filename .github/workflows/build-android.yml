@@ -7,7 +7,6 @@ on:
       - "src/**"
       - "src-tauri/**"
       - "scripts/ensure-android.mjs"
-      - "scripts/prepare-android-signing.mjs"
       - "package.json"
       - ".github/workflows/build-android.yml"
 
@@ -36,7 +35,7 @@ jobs:
           echo "NDK_HOME=${ANDROID_HOME}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,armv7-linux-androideabi
+          targets: aarch64-linux-android
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
@@ -55,63 +54,30 @@ jobs:
           test -s src-tauri/icons/icon.ico
           echo "Tauri icon set generated successfully."
 
-      - name: Configure temporary signing for PR artifact
-        shell: bash
-        run: |
-          set -euo pipefail
-          KEYSTORE="$RUNNER_TEMP/conta-certa-pr.jks"
-          PASSWORD="conta-certa-pr-build"
-          keytool -genkeypair -noprompt \
-            -keystore "$KEYSTORE" \
-            -storepass "$PASSWORD" \
-            -keypass "$PASSWORD" \
-            -alias contacerta-pr \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 3650 \
-            -dname "CN=Conta Certa PR, OU=CI, O=Conta Certa, L=Santo Antonio de Jesus, ST=BA, C=BR"
-          export ANDROID_KEY_BASE64="$(base64 -w0 "$KEYSTORE")"
-          export ANDROID_KEY_ALIAS="contacerta-pr"
-          export ANDROID_KEY_PASSWORD="$PASSWORD"
-          export ANDROID_STORE_PASSWORD="$PASSWORD"
-          node scripts/prepare-android-signing.mjs --required
-
-      - name: Build optimized ARM64 APK
+      - name: Build installable ARM64 APK without production signing secrets
         run: npm run android:build:apk
 
-      - name: Build phone AAB
-        run: npm run android:build:aab
-
-      - name: Validate Android packages
+      - name: Validate and package Android APK
         shell: bash
         run: |
           set -euo pipefail
           APK="$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' ! -name '*unsigned*' | head -n 1)"
-          AAB="$(find src-tauri/gen/android/app/build/outputs/bundle -type f -name '*.aab' | head -n 1)"
 
-          test -n "$APK" || { echo "APK assinado não encontrado"; exit 1; }
-          test -n "$AAB" || { echo "AAB não encontrado"; exit 1; }
+          test -n "$APK" || { echo "APK Android instalável não encontrado"; exit 1; }
 
-          "${ANDROID_HOME}/build-tools/${BUILD_TOOLS_VERSION}/apksigner" verify --verbose --print-certs "$APK"
-          # The PR keystore uses a self-signed CI certificate. Verify bundle
-          # signature integrity without treating the expected trust-chain warning
-          # as an invalid AAB.
-          jarsigner -verify "$AAB"
+          # Android requires every installable APK to carry a package signature.
+          # Debug builds use the Android SDK debug key automatically and do not
+          # require Play Store credentials or repository secrets.
+          "${ANDROID_HOME}/build-tools/${BUILD_TOOLS_VERSION}/apksigner" verify --verbose "$APK"
 
           APK_BYTES="$(stat -c%s "$APK")"
-          AAB_BYTES="$(stat -c%s "$AAB")"
           APK_MAX=$((80 * 1024 * 1024))
-          AAB_MAX=$((100 * 1024 * 1024))
 
-          echo "APK: $((APK_BYTES / 1024 / 1024)) MB"
-          echo "AAB: $((AAB_BYTES / 1024 / 1024)) MB"
-
+          echo "APK ARM64: $((APK_BYTES / 1024 / 1024)) MB"
           test "$APK_BYTES" -le "$APK_MAX" || { echo "APK excede 80 MB; publicação bloqueada"; exit 1; }
-          test "$AAB_BYTES" -le "$AAB_MAX" || { echo "AAB excede 100 MB; publicação bloqueada"; exit 1; }
 
           mkdir -p dist-android
           cp "$APK" dist-android/Conta-Certa-PR-arm64.apk
-          cp "$AAB" dist-android/Conta-Certa-PR.aab
 
       - uses: actions/upload-artifact@v4
         with:
