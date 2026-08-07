@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { HashRouter, Route, Routes } from 'react-router-dom';
 import { AppShell } from './components/layout/AppShell';
 import { AccountsPage } from './pages/AccountsPage';
@@ -15,9 +16,27 @@ import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TransactionsPage } from './pages/TransactionsPage';
 import { useAuthStore } from './store/useAuthStore';
+import { useFinanceStore } from './store/useFinanceStore';
 
 export default function App() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const theme = useFinanceStore((state) => state.settings.theme);
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+
+    const applyTheme = () => {
+      const dark = theme === 'dark' || (theme === 'system' && media.matches);
+      const resolvedTheme = dark ? 'dark' : 'light';
+      document.documentElement.dataset.theme = resolvedTheme;
+      document.documentElement.style.colorScheme = resolvedTheme;
+      document.body.dataset.theme = resolvedTheme;
+    };
+
+    applyTheme();
+    media.addEventListener('change', applyTheme);
+    return () => media.removeEventListener('change', applyTheme);
+  }, [theme]);
 
   if (!isAuthenticated) return <LoginPage />;
 
