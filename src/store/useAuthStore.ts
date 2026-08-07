@@ -131,7 +131,6 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'conta-certa-auth',
       storage: createJSONStorage(() => localStorage),
-      version: 2,
       partialize: (state) => ({
         user: state.user,
         credential: state.credential,
