@@ -14,17 +14,6 @@ on:
           - major
   push:
     branches: [main]
-    paths:
-      - "src/**"
-      - "src-tauri/**"
-      - "public/**"
-      - "scripts/**"
-      - "package.json"
-      - "package-lock.json"
-      - "vite.config.ts"
-      - ".nvmrc"
-      - "rust-toolchain.toml"
-      - ".github/workflows/release.yml"
 
 permissions:
   contents: write
