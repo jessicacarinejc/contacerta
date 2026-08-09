@@ -1,6 +1,7 @@
 import * as pdfjs from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { createWorker } from 'tesseract.js';
+import * as XLSX from 'xlsx';
 import type { ExtractedDocumentData } from '../types/finance';
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
@@ -11,10 +12,31 @@ export interface DocumentReadResult {
   extracted: ExtractedDocumentData;
 }
 
-const imageExtensions = ['.jpg', '.jpeg', '.png', '.webp'];
+export class PdfPasswordError extends Error {
+  readonly reason: 'required' | 'incorrect';
+
+  constructor(reason: 'required' | 'incorrect') {
+    super(
+      reason === 'incorrect'
+        ? 'A senha informada para este PDF está incorreta.'
+        : 'Este PDF é protegido por senha. Informe a senha usada para abrir a fatura.',
+    );
+    this.name = 'PdfPasswordError';
+    this.reason = reason;
+  }
+}
+
+const imageExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.bmp'];
+const textExtensions = ['.txt', '.csv', '.ofx', '.qfx', '.ofc', '.xml', '.json', '.ret', '.rem'];
+const spreadsheetExtensions = ['.xls', '.xlsx'];
 
 function lowerFileName(file: File) {
   return file.name.toLowerCase().split('?')[0];
+}
+
+function hasExtension(file: File, extensions: string[]) {
+  const name = lowerFileName(file);
+  return extensions.some((extension) => name.endsWith(extension));
 }
 
 function isPdfFile(file: File) {
@@ -22,14 +44,38 @@ function isPdfFile(file: File) {
 }
 
 function isImageFile(file: File) {
-  const name = lowerFileName(file);
-  return file.type.startsWith('image/') || imageExtensions.some((extension) => name.endsWith(extension));
+  return file.type.startsWith('image/') || hasExtension(file, imageExtensions);
+}
+
+function isTextFinancialFile(file: File) {
+  return (
+    file.type.startsWith('text/') ||
+    ['application/json', 'application/xml', 'text/xml'].includes(file.type) ||
+    hasExtension(file, textExtensions)
+  );
+}
+
+function isSpreadsheetFile(file: File) {
+  return (
+    hasExtension(file, spreadsheetExtensions) ||
+    file.type === 'application/vnd.ms-excel' ||
+    file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  );
 }
 
 function errorMessage(error: unknown) {
   if (error instanceof Error) return error.message;
   if (typeof error === 'string') return error;
   return 'erro desconhecido';
+}
+
+function pdfPasswordReason(error: unknown): 'required' | 'incorrect' | undefined {
+  const code = Number((error as { code?: number })?.code);
+  const message = errorMessage(error).toLowerCase();
+
+  if (code === 2 || /incorrect password|senha incorreta/.test(message)) return 'incorrect';
+  if (code === 1 || /password|senha/.test(message)) return 'required';
+  return undefined;
 }
 
 export async function hashFile(file: File): Promise<string> {
@@ -43,11 +89,22 @@ export async function hashFile(file: File): Promise<string> {
 const normalizeText = (text: string) =>
   text.replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
 
-async function extractPdfText(file: File) {
+async function openPdf(file: File, password?: string) {
   const data = new Uint8Array(await file.arrayBuffer());
-  const pdf = await pdfjs.getDocument({ data }).promise;
+
+  try {
+    return await pdfjs.getDocument({ data, password: password || undefined }).promise;
+  } catch (error) {
+    const reason = pdfPasswordReason(error);
+    if (reason) throw new PdfPasswordError(reason);
+    throw new Error(`Não foi possível abrir o PDF: ${errorMessage(error)}`);
+  }
+}
+
+async function extractPdfText(file: File, password?: string) {
+  const pdf = await openPdf(file, password);
   const pages: string[] = [];
-  const maxPages = Math.min(pdf.numPages, Number(import.meta.env.VITE_OCR_MAX_PAGES || 3));
+  const maxPages = Math.min(pdf.numPages, Number(import.meta.env.VITE_PDF_TEXT_MAX_PAGES || 80));
 
   for (let pageNumber = 1; pageNumber <= maxPages; pageNumber += 1) {
     const page = await pdf.getPage(pageNumber);
@@ -58,15 +115,14 @@ async function extractPdfText(file: File) {
   return normalizeText(pages.join('\n'));
 }
 
-async function renderPdfPages(file: File) {
-  const data = new Uint8Array(await file.arrayBuffer());
-  const pdf = await pdfjs.getDocument({ data }).promise;
-  const maxPages = Math.min(pdf.numPages, Number(import.meta.env.VITE_OCR_MAX_PAGES || 3));
+async function renderPdfPages(file: File, password?: string) {
+  const pdf = await openPdf(file, password);
+  const maxPages = Math.min(pdf.numPages, Number(import.meta.env.VITE_OCR_MAX_PAGES || 12));
   const canvases: HTMLCanvasElement[] = [];
 
   for (let pageNumber = 1; pageNumber <= maxPages; pageNumber += 1) {
     const page = await pdf.getPage(pageNumber);
-    const viewport = page.getViewport({ scale: 1.7 });
+    const viewport = page.getViewport({ scale: 1.55 });
     const canvas = document.createElement('canvas');
     canvas.width = Math.ceil(viewport.width);
     canvas.height = Math.ceil(viewport.height);
@@ -107,7 +163,7 @@ async function decodeImage(file: File): Promise<CanvasImageSource & { width: num
 async function imageToCanvas(file: File) {
   const image = await decodeImage(file);
   const canvas = document.createElement('canvas');
-  const maxDimension = Number(import.meta.env.VITE_OCR_MAX_IMAGE_DIMENSION || 2400);
+  const maxDimension = Number(import.meta.env.VITE_OCR_MAX_IMAGE_DIMENSION || 2800);
   const longestSide = Math.max(image.width, image.height);
   const scale = Math.min(maxDimension / Math.max(longestSide, 1), 1.6);
 
@@ -117,7 +173,6 @@ async function imageToCanvas(file: File) {
   const context = canvas.getContext('2d', { willReadFrequently: true });
   if (!context) throw new Error('Não foi possível preparar a imagem.');
 
-  // Fundo branco evita artefatos de OCR em PNG/WebP com transparência.
   context.fillStyle = '#ffffff';
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
@@ -163,9 +218,6 @@ async function runOcr(
       );
     }
 
-    // Em alguns aparelhos o pacote de idioma português pode falhar na primeira
-    // inicialização. O modelo inglês ainda reconhece textos latinos e números,
-    // permitindo que o usuário prossiga com a conferência manual.
     onProgress?.(9, 'Tentando modo de compatibilidade do OCR');
     try {
       worker = await createOcrWorker('eng', onProgress);
@@ -193,6 +245,25 @@ async function runOcr(
   }
 }
 
+async function extractTextFinancialFile(file: File) {
+  return normalizeText(await file.text());
+}
+
+async function extractSpreadsheetText(file: File) {
+  const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
+  const chunks: string[] = [];
+  const maxSheets = Math.min(workbook.SheetNames.length, 10);
+
+  for (let index = 0; index < maxSheets; index += 1) {
+    const sheetName = workbook.SheetNames[index];
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) continue;
+    chunks.push(`Planilha: ${sheetName}\n${XLSX.utils.sheet_to_csv(sheet)}`);
+  }
+
+  return normalizeText(chunks.join('\n\n'));
+}
+
 function parseDate(text: string) {
   const matches = [
     ...text.matchAll(
@@ -205,7 +276,8 @@ function parseDate(text: string) {
 
 function parseValue(text: string) {
   const patterns = [
-    /(?:valor\s+(?:total|do\s+documento|a\s+pagar)|total\s+a\s+pagar|valor\s+cobrado)\s*[:-]?\s*R?\$?\s*([\d.]+,\d{2})/gi,
+    /(?:valor\s+total\s+da\s+fatura|total\s+da\s+fatura|valor\s+da\s+fatura|fatura\s+atual|pagamento\s+total|total\s+a\s+pagar|valor\s+a\s+pagar|valor\s+(?:total|do\s+documento|cobrado))\s*[:-]?\s*R?\$?\s*([\d.]+,\d{2})/gi,
+    /(?:total|saldo)\s+(?:desta\s+fatura|da\s+fatura)\s*[:-]?\s*R?\$?\s*([\d.]+,\d{2})/gi,
     /R\$\s*([\d.]+,\d{2})/g,
   ];
 
@@ -213,7 +285,7 @@ function parseValue(text: string) {
     const values = [...text.matchAll(pattern)]
       .map((match) => Number(match[1].replace(/\./g, '').replace(',', '.')))
       .filter((value) => Number.isFinite(value) && value > 0);
-    if (values.length) return Math.max(...values);
+    if (values.length) return pattern === patterns[2] ? Math.max(...values) : values[0];
   }
 
   return undefined;
@@ -243,7 +315,9 @@ function detectDocumentType(text: string): ExtractedDocumentData['documentType']
   if (/linha digitável|linha digitavel|código de barras|codigo de barras|boleto/.test(lower)) {
     return 'boleto';
   }
-  if (/extrato|saldo anterior|saldo disponível|saldo disponivel/.test(lower)) return 'statement';
+  if (/extrato|saldo anterior|saldo disponível|saldo disponivel|<ofx>|<stmtrs>/.test(lower)) {
+    return 'statement';
+  }
   if (
     /fatura|cartão de crédito|cartao de credito|pagamento mínimo|parcelas? de compras|parcela \d+ de \d+/i.test(
       lower,
@@ -279,26 +353,35 @@ export function parseFinancialDocument(text: string, fileName: string): Extracte
 export async function readFinancialDocument(
   file: File,
   onProgress?: (progress: number, message: string) => void,
+  password?: string,
 ): Promise<DocumentReadResult> {
   onProgress?.(2, 'Calculando assinatura digital');
   const hash = await hashFile(file);
   let text = '';
 
   if (isPdfFile(file)) {
-    onProgress?.(6, 'Verificando texto selecionável');
-    text = await extractPdfText(file);
+    onProgress?.(5, 'Abrindo PDF');
+    text = await extractPdfText(file, password);
     if (text.replace(/\s/g, '').length < 80) {
       onProgress?.(8, 'PDF digitalizado detectado');
-      text = await runOcr(await renderPdfPages(file), onProgress);
+      text = await runOcr(await renderPdfPages(file, password), onProgress);
     }
   } else if (isImageFile(file)) {
     onProgress?.(6, 'Preparando imagem');
     text = await runOcr([await imageToCanvas(file)], onProgress);
+  } else if (isSpreadsheetFile(file)) {
+    onProgress?.(20, 'Lendo planilha financeira');
+    text = await extractSpreadsheetText(file);
+  } else if (isTextFinancialFile(file)) {
+    onProgress?.(20, 'Lendo arquivo financeiro');
+    text = await extractTextFinancialFile(file);
   } else {
-    throw new Error('Formato não suportado. Envie PDF, JPG, JPEG, PNG ou WebP.');
+    throw new Error(
+      'Formato não suportado. Envie PDF, JPG, JPEG, PNG, WebP, BMP, TXT, CSV, OFX, QFX, OFC, XML, JSON, XLS ou XLSX.',
+    );
   }
 
-  if (!text.trim()) throw new Error('Nenhum texto foi identificado. Tente uma imagem mais nítida.');
+  if (!text.trim()) throw new Error('Nenhum texto foi identificado no documento.');
   onProgress?.(96, 'Interpretando dados financeiros');
   const extracted = parseFinancialDocument(text, file.name);
   onProgress?.(100, 'Documento pronto para revisão');
