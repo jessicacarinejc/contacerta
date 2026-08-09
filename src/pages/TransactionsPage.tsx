@@ -1,5 +1,6 @@
-import { Download, Plus, Search, Trash2 } from 'lucide-react';
+import { CalendarClock, Download, Plus, Search, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { PageHeader } from '../components/PageHeader';
 import { TransactionForm } from '../components/forms/TransactionForm';
@@ -8,6 +9,7 @@ import { toCurrency } from '../lib/currency';
 import { useFinanceStore } from '../store/useFinanceStore';
 
 export function TransactionsPage() {
+  const navigate = useNavigate();
   const transactions = useFinanceStore((state) => state.transactions);
   const accounts = useFinanceStore((state) => state.accounts);
   const categories = useFinanceStore((state) => state.categories);
@@ -52,6 +54,9 @@ export function TransactionsPage() {
         description="Receitas, despesas e transferências realizadas ou referentes à fatura atual. Parcelas futuras ficam em uma aba própria."
         action={
           <>
+            <Button variant="secondary" onClick={() => navigate('/lancamentos-futuros')}>
+              <CalendarClock size={17} /> Futuros
+            </Button>
             <Button variant="secondary" onClick={exportXlsx}>
               <Download size={17} /> Exportar
             </Button>
