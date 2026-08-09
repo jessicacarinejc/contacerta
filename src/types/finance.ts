@@ -86,6 +86,7 @@ export interface ExtractedDocumentItem {
   cardLastDigits?: string;
   installment?: { current: number; total: number };
   sourceLine?: string;
+  thirdParty?: string;
 }
 
 export interface ExtractedDocumentData {

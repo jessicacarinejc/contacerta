@@ -1,23 +1,34 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Button } from '../ui';
 import { useFinanceStore } from '../../store/useFinanceStore';
-import type { TransactionStatus, TransactionType } from '../../types/finance';
+import type { Transaction, TransactionStatus, TransactionType } from '../../types/finance';
 
-export function TransactionForm({ onDone }: { onDone: () => void }) {
+interface TransactionFormProps {
+  onDone: () => void;
+  transaction?: Transaction;
+}
+
+export function TransactionForm({ onDone, transaction }: TransactionFormProps) {
   const accounts = useFinanceStore((state) => state.accounts);
   const categories = useFinanceStore((state) => state.categories);
   const addTransaction = useFinanceStore((state) => state.addTransaction);
+  const updateTransaction = useFinanceStore((state) => state.updateTransaction);
 
-  const [type, setType] = useState<TransactionType>('expense');
-  const [description, setDescription] = useState('');
-  const [otherExpenseDescription, setOtherExpenseDescription] = useState('');
-  const [amount, setAmount] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [dueDate, setDueDate] = useState('');
-  const [accountId, setAccountId] = useState(accounts[0]?.id || '');
-  const [categoryId, setCategoryId] = useState('cat_other');
-  const [status, setStatus] = useState<TransactionStatus>('paid');
-  const [thirdParty, setThirdParty] = useState('');
+  const editing = Boolean(transaction);
+  const [type, setType] = useState<TransactionType>(transaction?.type || 'expense');
+  const [description, setDescription] = useState(transaction?.description || '');
+  const [otherExpenseDescription, setOtherExpenseDescription] = useState(
+    transaction?.categoryId === 'cat_other' ? transaction.description : '',
+  );
+  const [amount, setAmount] = useState(transaction ? String(transaction.amount) : '');
+  const [date, setDate] = useState(
+    transaction?.date || new Date().toISOString().slice(0, 10),
+  );
+  const [dueDate, setDueDate] = useState(transaction?.dueDate || '');
+  const [accountId, setAccountId] = useState(transaction?.accountId || accounts[0]?.id || '');
+  const [categoryId, setCategoryId] = useState(transaction?.categoryId || 'cat_other');
+  const [status, setStatus] = useState<TransactionStatus>(transaction?.status || 'paid');
+  const [thirdParty, setThirdParty] = useState(transaction?.thirdParty || '');
 
   const filtered = useMemo(
     () => categories.filter((category) => category.type === type || category.type === 'both'),
@@ -45,23 +56,43 @@ export function TransactionForm({ onDone }: { onDone: () => void }) {
 
     if (!normalizedDescription || value <= 0 || !accountId) return;
 
-    addTransaction({
+    const editableData = {
       description: normalizedDescription,
       type,
       amount: value,
       date,
       dueDate: dueDate || undefined,
-      paidAt: status === 'paid' ? date : undefined,
+      paidAt:
+        status === 'paid'
+          ? transaction?.status === 'paid' && transaction.paidAt
+            ? transaction.paidAt
+            : date
+          : undefined,
       accountId,
       categoryId,
       status,
       thirdParty: type === 'expense' ? thirdParty.trim() || undefined : undefined,
-    });
+    };
+
+    if (transaction) {
+      // Atualiza somente os campos editáveis. Metadados da importação, documento de origem,
+      // parcela, observações e demais vínculos permanecem preservados.
+      updateTransaction(transaction.id, editableData);
+    } else {
+      addTransaction(editableData);
+    }
+
     onDone();
   }
 
   return (
     <form className="form-grid" onSubmit={submit}>
+      {editing && transaction?.documentId && (
+        <div className="form-hint span-2">
+          Este lançamento veio de um documento importado. Você pode corrigir os dados abaixo sem perder o vínculo com o documento original.
+        </div>
+      )}
+
       <label>
         Tipo
         <select value={type} onChange={(event) => setType(event.target.value as TransactionType)}>
@@ -168,6 +199,7 @@ export function TransactionForm({ onDone }: { onDone: () => void }) {
           <option value="paid">Pago/recebido</option>
           <option value="pending">Pendente</option>
           <option value="overdue">Vencido</option>
+          <option value="cancelled">Cancelado</option>
         </select>
       </label>
 
@@ -176,7 +208,7 @@ export function TransactionForm({ onDone }: { onDone: () => void }) {
           Cancelar
         </Button>
         <Button type="submit" disabled={accounts.length === 0}>
-          Salvar lançamento
+          {editing ? 'Atualizar lançamento' : 'Salvar lançamento'}
         </Button>
       </div>
     </form>
