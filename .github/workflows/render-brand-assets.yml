@@ -3,15 +3,14 @@ name: Render and validate branding assets
 on:
   workflow_dispatch:
   push:
-    branches:
-      - agent/fix-branding-splash-autoversion
     paths:
       - "public/app-icon.svg"
       - "public/favicon.svg"
-      - "public/branding/logo-full.svg"
-      - "public/branding/logo-horizontal.svg"
-      - "public/branding/logo-symbol.svg"
+      - "public/logo.svg"
+      - "public/branding/logo-*.svg"
       - "public/branding/splash-*.svg"
+      - "public/branding/brand-tokens.*"
+      - "public/site.webmanifest"
       - ".github/workflows/render-brand-assets.yml"
 
 permissions:
@@ -23,7 +22,7 @@ concurrency:
 
 jobs:
   render:
-    name: Generate PNG, ICO, ICNS and native icons
+    name: Generate web, desktop and mobile branding
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -44,6 +43,7 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Render web and PWA assets
+        shell: bash
         run: |
           set -euo pipefail
 
@@ -54,8 +54,20 @@ jobs:
           rsvg-convert -w 180 -h 180 public/app-icon.svg -o public/apple-touch-icon.png
           rsvg-convert -w 192 -h 192 public/app-icon.svg -o public/android-chrome-192x192.png
           rsvg-convert -w 512 -h 512 public/app-icon.svg -o public/android-chrome-512x512.png
-
           convert public/favicon-16x16.png public/favicon-32x32.png public/favicon-48x48.png public/favicon.ico
+
+      - name: Render complete logo and splash kit
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rsvg-convert -w 1055 -h 999 public/branding/logo-full.svg -o public/branding/logo-full.png
+          rsvg-convert -w 1394 -h 424 public/branding/logo-horizontal.svg -o public/branding/logo-horizontal.png
+          rsvg-convert -w 1024 -h 994 public/branding/logo-symbol.svg -o public/branding/logo-symbol.png
+          rsvg-convert -w 1920 -h 1080 public/branding/splash-desktop.svg -o public/branding/splash-desktop.png
+          rsvg-convert -w 1920 -h 1080 public/branding/splash-desktop-light.svg -o public/branding/splash-desktop-light.png
+          rsvg-convert -w 1080 -h 1920 public/branding/splash-mobile.svg -o public/branding/splash-mobile.png
+          rsvg-convert -w 1080 -h 1920 public/branding/splash-mobile-light.svg -o public/branding/splash-mobile-light.png
 
       - name: Generate Tauri desktop and Android icons
         run: npm run icons
@@ -70,9 +82,15 @@ jobs:
             public/favicon.ico
             public/favicon-16x16.png
             public/favicon-32x32.png
+            public/favicon-48x48.png
             public/apple-touch-icon.png
             public/android-chrome-192x192.png
             public/android-chrome-512x512.png
+            public/branding/logo-full.png
+            public/branding/logo-horizontal.png
+            public/branding/logo-symbol.png
+            public/branding/splash-desktop.png
+            public/branding/splash-mobile.png
             src-tauri/icons/icon.png
             src-tauri/icons/icon.ico
             src-tauri/icons/icon.icns
@@ -82,7 +100,14 @@ jobs:
             test -s "$file" || { echo "Ativo ausente ou vazio: $file"; exit 1; }
           done
 
-          identify public/app-icon.png public/favicon-32x32.png public/apple-touch-icon.png public/android-chrome-512x512.png
+          identify \
+            public/app-icon.png \
+            public/favicon-32x32.png \
+            public/apple-touch-icon.png \
+            public/android-chrome-512x512.png \
+            public/branding/logo-full.png \
+            public/branding/logo-horizontal.png \
+            public/branding/splash-mobile.png
 
       - name: Commit generated binaries
         shell: bash
@@ -100,6 +125,13 @@ jobs:
             public/apple-touch-icon.png \
             public/android-chrome-192x192.png \
             public/android-chrome-512x512.png \
+            public/branding/logo-full.png \
+            public/branding/logo-horizontal.png \
+            public/branding/logo-symbol.png \
+            public/branding/splash-desktop.png \
+            public/branding/splash-desktop-light.png \
+            public/branding/splash-mobile.png \
+            public/branding/splash-mobile-light.png \
             src-tauri/icons
 
           if git diff --cached --quiet; then
@@ -107,5 +139,5 @@ jobs:
             exit 0
           fi
 
-          git commit -m "chore: render corrected branding assets"
+          git commit -m "chore: render official Conta Certa branding assets"
           git push origin "HEAD:${GITHUB_REF_NAME}"

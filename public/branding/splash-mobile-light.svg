@@ -1,24 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Conta Certa — tela de abertura mobile clara" viewBox="0 0 1080 1920">
+<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Conta Certa" viewBox="0 0 1080 1920">
   <rect width="1080" height="1920" fill="#FFFFFF"/>
-  <defs>
-    <clipPath id="mark-clip"><circle cx="512" cy="512" r="346"/></clipPath>
-    <g id="conta-certa-mark">
-      <circle cx="512" cy="512" r="346" fill="#FFFFFF"/>
-      <g clip-path="url(#mark-clip)">
-        <rect x="350" y="655" width="105" height="250" fill="#279B48"/>
-        <rect x="485" y="555" width="105" height="350" fill="#279B48"/>
-        <rect x="620" y="425" width="105" height="480" fill="#279B48"/>
-        <rect x="755" y="300" width="105" height="605" fill="#279B48"/>
-      </g>
-      <circle cx="512" cy="512" r="346" fill="none" stroke="#092144" stroke-width="52"/>
-      <path d="M214 742 C365 676 515 548 736 278" fill="none" stroke="#FFFFFF" stroke-width="104" stroke-linecap="round"/>
-      <path d="M214 742 C365 676 515 548 736 278" fill="none" stroke="#092144" stroke-width="58" stroke-linecap="square"/>
-      <path d="M704 310 L760 214 L823 331 Z" fill="#092144"/>
-      <text x="378" y="438" fill="#279B48" font-family="Arial, Helvetica, sans-serif" font-size="210" font-weight="700" text-anchor="middle">$</text>
-    </g>
-  </defs>
-  <g transform="translate(273.76 430) scale(0.52)"><use href="#conta-certa-mark"/></g>
-  <text x="540" y="1032.48" fill="#092144" font-family="Arial, Helvetica, sans-serif" font-size="58" font-weight="800" letter-spacing="17" text-anchor="middle">CONTA CERTA</text>
-  <text x="540" y="1124.48" fill="#279B48" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="600" letter-spacing="12" text-anchor="middle">GESTÃO</text>
-  <text x="540" y="1177.48" fill="#279B48" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="600" letter-spacing="12" text-anchor="middle">FINANCEIRA</text>
+  <image href="logo-full.svg" x="190" y="500" width="700" height="880" preserveAspectRatio="xMidYMid meet"/>
 </svg>
