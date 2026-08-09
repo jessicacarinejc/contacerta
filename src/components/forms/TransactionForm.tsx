@@ -16,9 +16,7 @@ export function TransactionForm({ onDone, transaction }: TransactionFormProps) {
 
   const editing = Boolean(transaction);
   const [type, setType] = useState<TransactionType>(transaction?.type || 'expense');
-  const [description, setDescription] = useState(
-    transaction?.categoryId === 'cat_other' ? '' : transaction?.description || '',
-  );
+  const [description, setDescription] = useState(transaction?.description || '');
   const [otherExpenseDescription, setOtherExpenseDescription] = useState(
     transaction?.categoryId === 'cat_other' ? transaction.description : '',
   );
