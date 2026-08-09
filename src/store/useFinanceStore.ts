@@ -41,6 +41,9 @@ interface FinanceState {
   addCard: (card: Omit<CreditCard, 'id'>) => void;
   updateCard: (id: string, patch: Partial<CreditCard>) => void;
   deleteCard: (id: string) => void;
+  addBudget: (budget: Omit<Budget, 'id'>) => void;
+  updateBudget: (id: string, patch: Partial<Omit<Budget, 'id'>>) => void;
+  deleteBudget: (id: string) => void;
   addGoal: (goal: Omit<Goal, 'id'>) => void;
   updateGoal: (id: string, patch: Partial<Omit<Goal, 'id'>>) => void;
   deleteGoal: (id: string) => void;
@@ -137,6 +140,20 @@ export const useFinanceStore = create<FinanceState>()(
         set((state) => ({ cards: state.cards.filter((item) => item.id !== id) }));
       },
 
+      addBudget(budget) {
+        set((state) => ({ budgets: [...state.budgets, { ...budget, id: createId('budget') }] }));
+      },
+
+      updateBudget(id, patch) {
+        set((state) => ({
+          budgets: state.budgets.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+        }));
+      },
+
+      deleteBudget(id) {
+        set((state) => ({ budgets: state.budgets.filter((item) => item.id !== id) }));
+      },
+
       addGoal(goal) {
         set((state) => ({ goals: [...state.goals, { ...goal, id: createId('goal') }] }));
       },
@@ -196,7 +213,7 @@ export const useFinanceStore = create<FinanceState>()(
       approveDocument(id, accountId, categoryId) {
         const state = get();
         const document = state.documents.find((item) => item.id === id);
-        if (!document?.extracted?.value) return false;
+        if (!document?.extracted) return false;
 
         const resolvedAccountId =
           accountId && state.accounts.some((item) => item.id === accountId)
@@ -208,19 +225,43 @@ export const useFinanceStore = create<FinanceState>()(
             : state.categories.find((item) => item.type !== 'income')?.id;
         if (!resolvedAccountId || !resolvedCategoryId) return false;
 
-        const dueDate = document.extracted.dueDate;
-        get().addTransaction({
-          description:
-            document.extracted.description || document.extracted.beneficiary || document.name,
-          type: 'expense',
-          amount: document.extracted.value,
-          date: new Date().toISOString().slice(0, 10),
-          dueDate,
-          accountId: resolvedAccountId,
-          categoryId: resolvedCategoryId,
-          status: dueDate ? 'pending' : 'paid',
-          documentId: id,
-        });
+        const extracted = document.extracted;
+        const dueDate = extracted.dueDate;
+        const invoiceItems =
+          extracted.documentType === 'invoice'
+            ? (extracted.items || []).filter((item) => item.amount > 0 && item.description.trim())
+            : [];
+
+        if (invoiceItems.length > 0) {
+          for (const item of invoiceItems) {
+            get().addTransaction({
+              description: item.description,
+              type: 'expense',
+              amount: item.amount,
+              date: item.date || new Date().toISOString().slice(0, 10),
+              dueDate,
+              accountId: resolvedAccountId,
+              categoryId: resolvedCategoryId,
+              status: dueDate ? 'pending' : 'paid',
+              installment: item.installment,
+              notes: `Item importado da fatura ${document.name}. O valor total da fatura não foi lançado como nova despesa.`,
+              documentId: id,
+            });
+          }
+        } else {
+          if (!extracted.value) return false;
+          get().addTransaction({
+            description: extracted.description || extracted.beneficiary || document.name,
+            type: 'expense',
+            amount: extracted.value,
+            date: new Date().toISOString().slice(0, 10),
+            dueDate,
+            accountId: resolvedAccountId,
+            categoryId: resolvedCategoryId,
+            status: dueDate ? 'pending' : 'paid',
+            documentId: id,
+          });
+        }
 
         set((current) => ({
           documents: current.documents.map((item) =>
@@ -265,7 +306,7 @@ export const useFinanceStore = create<FinanceState>()(
     {
       name: 'conta-certa-finance-state',
       storage: createJSONStorage(() => platformStorage),
-      version: 1,
+      version: 2,
     },
   ),
 );
