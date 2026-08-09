@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   Bell,
   BriefcaseBusiness,
+  CalendarClock,
   ChartNoAxesCombined,
   CreditCard,
   FileScan,
@@ -30,6 +31,7 @@ import { useFinanceStore } from '../../store/useFinanceStore';
 const navigation = [
   ['/', 'Dashboard', Gauge],
   ['/movimentacoes', 'Movimentações', ReceiptText],
+  ['/lancamentos-futuros', 'Lançamentos futuros', CalendarClock],
   ['/contas', 'Contas', Landmark],
   ['/cartoes', 'Cartões', CreditCard],
   ['/contas-a-pagar', 'Contas a pagar', TrendingDown],
