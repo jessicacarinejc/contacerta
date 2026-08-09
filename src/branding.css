@@ -23,7 +23,7 @@
 
 .brand-lockup {
   width: 100%;
-  min-height: 136px;
+  min-height: 104px;
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -37,9 +37,9 @@
 .brand img {
   display: block;
   width: 100%;
-  height: 132px;
+  height: 96px;
   max-width: 100%;
-  padding: 8px 18px;
+  padding: 10px 12px;
   aspect-ratio: auto;
   object-fit: contain;
   object-position: center;
@@ -74,17 +74,17 @@
 
 .drawer-header .brand {
   flex: 1;
-  max-width: 190px;
+  max-width: 220px;
   padding: 0;
 }
 
 .drawer-header .brand-lockup {
-  min-height: 92px;
+  min-height: 76px;
 }
 
 .drawer-header .brand-lockup img {
-  height: 88px;
-  padding: 5px 12px;
+  height: 72px;
+  padding: 7px 10px;
 }
 
 @media (max-width: 760px) {

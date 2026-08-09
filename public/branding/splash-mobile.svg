@@ -1,24 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Conta Certa — tela de abertura" viewBox="0 0 1080 1920">
-  <rect width="1080" height="1920" fill="#092144"/>
+<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Conta Certa — Gestão Financeira" viewBox="0 0 1080 1920">
   <defs>
-    <clipPath id="mark-clip"><circle cx="512" cy="512" r="346"/></clipPath>
-    <g id="conta-certa-mark">
-      <circle cx="512" cy="512" r="346" fill="#092144"/>
-      <g clip-path="url(#mark-clip)">
-        <rect x="350" y="655" width="105" height="250" fill="#FFFFFF"/>
-        <rect x="485" y="555" width="105" height="350" fill="#FFFFFF"/>
-        <rect x="620" y="425" width="105" height="480" fill="#FFFFFF"/>
-        <rect x="755" y="300" width="105" height="605" fill="#FFFFFF"/>
-      </g>
-      <circle cx="512" cy="512" r="346" fill="none" stroke="#FFFFFF" stroke-width="52"/>
-      <path d="M214 742 C365 676 515 548 736 278" fill="none" stroke="#092144" stroke-width="104" stroke-linecap="round"/>
-      <path d="M214 742 C365 676 515 548 736 278" fill="none" stroke="#FFFFFF" stroke-width="58" stroke-linecap="square"/>
-      <path d="M704 310 L760 214 L823 331 Z" fill="#FFFFFF"/>
-      <text x="378" y="438" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="210" font-weight="700" text-anchor="middle">$</text>
-    </g>
+    <radialGradient id="glow" cx="50%" cy="38%" r="72%">
+      <stop offset="0" stop-color="#1c7441" />
+      <stop offset="0.5" stop-color="#0d3155" />
+      <stop offset="1" stop-color="#06172f" />
+    </radialGradient>
   </defs>
-  <g transform="translate(273.76 430) scale(0.52)"><use href="#conta-certa-mark"/></g>
-  <text x="540" y="1032.48" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="58" font-weight="800" letter-spacing="17" text-anchor="middle">CONTA CERTA</text>
-  <text x="540" y="1124.48" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="600" letter-spacing="12" text-anchor="middle">GESTÃO</text>
-  <text x="540" y="1177.48" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="600" letter-spacing="12" text-anchor="middle">FINANCEIRA</text>
+  <rect width="1080" height="1920" fill="url(#glow)" />
+  <rect x="120" y="420" width="840" height="1000" rx="72" fill="#FFFFFF" opacity="0.98" />
+  <image href="logo-full.svg" x="220" y="520" width="640" height="768" preserveAspectRatio="xMidYMid meet" />
 </svg>
