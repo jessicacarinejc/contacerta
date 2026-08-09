@@ -80,6 +80,8 @@ export interface ExtractedDocumentItem {
   description: string;
   amount: number;
   date?: string;
+  time?: string;
+  cardLastDigits?: string;
   installment?: { current: number; total: number };
   sourceLine?: string;
 }
