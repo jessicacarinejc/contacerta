@@ -4,25 +4,26 @@ const moneyPattern = /(?:R\s*\$\s*)?(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})(-)
 const installmentPattern = /\b(?:parc(?:ela)?\s*)?(\d{1,2})\s*(?:de|\/)\s*(\d{1,2})\b/i;
 const datePattern = /\b(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?\b/;
 
-const ignoredLinePattern =
-  /(?:pagamentos?\b|pagamentos?\s*\/\s*cr[eé]ditos?|cr[eé]ditos?\b|pgto\.?\b|cash\s+ag\.?\b|estorno\b|reembolso\b|devolu[cç][aã]o\b|ajuste\s+a\s+cr[eé]dito|saldo\s+fatura\s+anterior|saldo\s+anterior|limite\s+(?:único|unico|total|dispon[ií]vel)|saldo\s+parcelado|tarifas?,\s*encargos?\s+e\s+multas?|total\s+parcelado\s+para\s+pr[oó]xima\s+fatura)/i;
+const paymentOrCreditPattern =
+  /(?:pagamentos?\b|pagamentos?\s*\/\s*cr[eé]ditos?|cr[eé]ditos?\b|pgto\.?\s+cash|estorno\b|reembolso\b|devolu[cç][aã]o\b|ajuste\s+a\s+cr[eé]dito|saldo\s+fatura\s+anterior|saldo\s+anterior)/i;
 
-const summaryLinePattern =
-  /(?:resumo\s+da\s+fatura|subtotal\b|total\s+da\s+fatura|valor\s+da\s+fatura|compras\s+nacionais|compras\s+internacionais|fatura\s+atual|vencimento|linha\s+digit[aá]vel|c[oó]digo\s+de\s+barras|p[aá]gina\s+\d+|jessica\s+c\s+j\s+neri\s*\(cart[aã]o|data\s+descri[cç][aã]o\s+pa[ií]s\s+valor)/i;
+const informationalPattern =
+  /(?:resumo\s+da\s+fatura|subtotal\b|^total\b|valor\s+da\s+fatura|compras\s+nacionais|compras\s+internacionais|fatura\s+atual|vencimento|linha\s+digit[aá]vel|c[oó]digo\s+de\s+barras|limite\s+(?:único|unico|total|dispon[ií]vel)|saldo\s+parcelado|total\s+parcelado|p[aá]gina\s+\d+|data\s+descri[cç][aã]o\s+pa[ií]s\s+valor)/i;
 
 function normalizeLine(value: string) {
   return value.replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' ').trim();
 }
 
-function moneyToNumber(value: string) {
+function currencyToNumber(value: string) {
   return Number(value.replace(/\s/g, '').replace(/\./g, '').replace(',', '.'));
 }
 
-function normalizeDescription(value: string) {
+export function normalizeInvoiceDescription(value: string) {
   return value
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+    .replace(installmentPattern, ' ')
     .replace(/\b(?:santo\s+antonio|salvador|curitiba|sapeacu|amparo)\b/g, ' ')
     .replace(/\bbr\b/g, ' ')
     .replace(/[^a-z0-9]+/g, ' ')
@@ -36,24 +37,22 @@ function inferYear(text: string, dueDate?: string) {
   return match ? Number(match[1]) : new Date().getFullYear();
 }
 
-function parseDate(line: string, fallbackYear: number) {
+function parseDate(line: string, year: number) {
   const match = line.match(datePattern);
   if (!match) return undefined;
-  const year = match[3]
+  const resolvedYear = match[3]
     ? match[3].length === 2
       ? 2000 + Number(match[3])
       : Number(match[3])
-    : fallbackYear;
-  return `${year}-${String(Number(match[2])).padStart(2, '0')}-${String(Number(match[1])).padStart(2, '0')}`;
+    : year;
+  return `${resolvedYear}-${String(Number(match[2])).padStart(2, '0')}-${String(Number(match[1])).padStart(2, '0')}`;
 }
 
-function isNegativeMoney(line: string, match: RegExpMatchArray) {
-  const captured = match[1] || '';
-  const trailing = match[2] || '';
-  return captured.startsWith('-') || trailing === '-' || /R\s*\$\s*-/.test(line);
+function isNegativeAmount(line: string, match: RegExpMatchArray) {
+  return match[1]?.startsWith('-') || match[2] === '-' || /R\s*\$\s*-/.test(line);
 }
 
-function cleanDescription(line: string, amountText: string) {
+function cleanDescription(line: string, amountText = '') {
   return line
     .replace(amountText, ' ')
     .replace(/R\s*\$/gi, ' ')
@@ -61,50 +60,59 @@ function cleanDescription(line: string, amountText: string) {
     .replace(installmentPattern, ' ')
     .replace(/\b(?:final|cart[aã]o\.?\s*n\.?)\s*\d{4}\b/gi, ' ')
     .replace(/\b(?:br|us)\b/gi, ' ')
-    .replace(/\b(?:\d{1,3})\b(?=\s*$)/g, ' ')
     .replace(/[|•›>]+/g, ' ')
     .replace(/\s{2,}/g, ' ')
     .replace(/^[-–—:;,.\s]+|[-–—:;,.\s]+$/g, '')
     .trim();
 }
 
-function likelyExpenseDescription(value: string) {
-  if (value.length < 2 || value.length > 140) return false;
+function validDescription(value: string) {
+  if (value.length < 2 || value.length > 150) return false;
   if (!/[a-zà-ÿ]/i.test(value)) return false;
-  if (ignoredLinePattern.test(value) || summaryLinePattern.test(value)) return false;
-  if (/^(pagamentos?|compras\s+diversas|hospitais|parcelamentos?\s+pr[oó]xima\s+fatura)$/i.test(value)) {
+  if (paymentOrCreditPattern.test(value) || informationalPattern.test(value)) return false;
+  if (/^(?:compras\s+diversas|hospitais|parcelamentos?\s+pr[oó]xima\s+fatura)$/i.test(value)) {
     return false;
   }
   return true;
 }
 
-function parseItemLine(line: string, fallbackYear: number): ExtractedDocumentItem | undefined {
+function parseItem(line: string, year: number, pendingDescription = '') {
   const matches = [...line.matchAll(moneyPattern)];
   moneyPattern.lastIndex = 0;
   if (!matches.length) return undefined;
 
   const chosen = matches[matches.length - 1];
-  if (isNegativeMoney(line, chosen)) return undefined;
-  if (ignoredLinePattern.test(line)) return undefined;
+  if (isNegativeAmount(line, chosen)) return undefined;
+  if (paymentOrCreditPattern.test(line) || informationalPattern.test(line)) return undefined;
 
-  const amount = moneyToNumber(chosen[1]);
+  const amount = currencyToNumber(chosen[1]);
   if (!Number.isFinite(amount) || amount <= 0) return undefined;
 
-  const description = cleanDescription(line, chosen[0]);
-  if (!likelyExpenseDescription(description)) return undefined;
+  const directDescription = cleanDescription(line, chosen[0]);
+  const description = validDescription(directDescription)
+    ? directDescription
+    : cleanDescription(pendingDescription);
+  if (!validDescription(description)) return undefined;
 
-  const installmentMatch = line.match(installmentPattern);
-  const installment = installmentMatch
-    ? { current: Number(installmentMatch[1]), total: Number(installmentMatch[2]) }
-    : undefined;
-
+  const installmentMatch = `${pendingDescription} ${line}`.match(installmentPattern);
   return {
     description,
     amount,
-    date: parseDate(line, fallbackYear),
-    installment,
-    sourceLine: line,
-  };
+    date: parseDate(`${pendingDescription} ${line}`, year),
+    installment: installmentMatch
+      ? { current: Number(installmentMatch[1]), total: Number(installmentMatch[2]) }
+      : undefined,
+    sourceLine: pendingDescription ? `${pendingDescription} | ${line}` : line,
+  } satisfies ExtractedDocumentItem;
+}
+
+function safeBaseItems(items: ExtractedDocumentItem[] | undefined) {
+  return (items || []).filter((item) => {
+    const text = `${item.description} ${item.sourceLine || ''}`;
+    if (paymentOrCreditPattern.test(text) || informationalPattern.test(item.description)) return false;
+    if (/R\s*\$\s*[\d.]+,\d{2}-/.test(text)) return false;
+    return item.amount > 0 && validDescription(item.description);
+  });
 }
 
 function deduplicate(items: ExtractedDocumentItem[]) {
@@ -112,7 +120,7 @@ function deduplicate(items: ExtractedDocumentItem[]) {
   return items.filter((item) => {
     const key = [
       item.date || '',
-      normalizeDescription(item.description),
+      normalizeInvoiceDescription(item.description),
       item.amount.toFixed(2),
       item.installment?.current || '',
       item.installment?.total || '',
@@ -123,52 +131,30 @@ function deduplicate(items: ExtractedDocumentItem[]) {
   });
 }
 
-function detectInvoiceTotal(text: string) {
-  const lines = text.split(/\n+/).map(normalizeLine).filter(Boolean);
-
-  const patterns = [
-    /^(?:valor|valor\s+da\s+fatura|total\s+da\s+fatura|fatura\s+atual)\s*[:\-]?\s*R\s*\$\s*([\d.]+,\d{2})\s*$/i,
-    /^total\s*[:\-]?\s*R\s*\$\s*([\d.]+,\d{2})\s*$/i,
-    /^compras\s+nacionais\s*[:\-]?\s*R\s*\$\s*([\d.]+,\d{2})\s*$/i,
-  ];
-
-  for (const pattern of patterns) {
-    for (const line of lines) {
-      if (/saldo|limite|parcelado|pagamento|cr[eé]dito|subtotal/i.test(line)) continue;
-      const match = line.match(pattern);
-      if (!match?.[1]) continue;
-      const value = moneyToNumber(match[1]);
-      if (Number.isFinite(value) && value > 0) return value;
-    }
+function merge(primary: ExtractedDocumentItem[], fallback: ExtractedDocumentItem[]) {
+  const output = [...primary];
+  for (const item of fallback) {
+    const normalized = normalizeInvoiceDescription(item.description);
+    const duplicate = output.some((existing) => {
+      const sameDescription = normalizeInvoiceDescription(existing.description) === normalized;
+      const sameAmount = Math.abs(existing.amount - item.amount) < 0.01;
+      const sameInstallment =
+        !existing.installment ||
+        !item.installment ||
+        (existing.installment.current === item.installment.current &&
+          existing.installment.total === item.installment.total);
+      return sameDescription && sameAmount && sameInstallment;
+    });
+    if (!duplicate) output.push(item);
   }
-
-  const compact = text.replace(/[ \t]+/g, ' ');
-  const inline = compact.match(
-    /(?:valor\s+da\s+fatura|total\s+da\s+fatura|fatura\s+atual)\s*[:\-]?\s*R\s*\$\s*([\d.]+,\d{2})/i,
-  );
-  if (inline?.[1]) {
-    const value = moneyToNumber(inline[1]);
-    if (Number.isFinite(value) && value > 0) return value;
-  }
-
-  return undefined;
+  return deduplicate(output);
 }
 
-function filterBaseExpenses(items: ExtractedDocumentItem[] | undefined) {
-  return (items || []).filter((item) => {
-    const source = `${item.description} ${item.sourceLine || ''}`;
-    if (ignoredLinePattern.test(source)) return false;
-    if (/R\s*\$\s*[\d.]+,\d{2}-/.test(source)) return false;
-    return item.amount > 0 && likelyExpenseDescription(item.description);
-  });
-}
-
-function classifySections(text: string, dueDate?: string) {
-  const fallbackYear = inferYear(text, dueDate);
+function parseSections(text: string, dueDate?: string) {
+  const year = inferYear(text, dueDate);
   const lines = text.split(/\n+/).map(normalizeLine).filter(Boolean);
-  const currentItems: ExtractedDocumentItem[] = [];
-  const futureItems: ExtractedDocumentItem[] = [];
-
+  const current: ExtractedDocumentItem[] = [];
+  const future: ExtractedDocumentItem[] = [];
   let section: 'unknown' | 'payments' | 'current' | 'future' | 'summary' = 'unknown';
   let pendingDescription = '';
 
@@ -188,90 +174,30 @@ function classifySections(text: string, dueDate?: string) {
       pendingDescription = '';
       continue;
     }
-    if (/^resumo\s+da\s+fatura$/i.test(line)) {
-      section = 'summary';
-      pendingDescription = '';
-      continue;
-    }
-    if (/^total\s+parcelado\s+para\s+pr[oó]xima\s+fatura/i.test(line)) {
+    if (/^resumo\s+da\s+fatura$/i.test(line) || /^total\s+parcelado/i.test(line)) {
       section = 'summary';
       pendingDescription = '';
       continue;
     }
 
     if (section === 'payments' || section === 'summary') continue;
-    if (ignoredLinePattern.test(line)) {
+    if (paymentOrCreditPattern.test(line) || informationalPattern.test(line)) {
       pendingDescription = '';
       continue;
     }
 
-    let item = parseItemLine(line, fallbackYear);
-    if (!item && pendingDescription) {
-      const moneyMatches = [...line.matchAll(moneyPattern)];
-      moneyPattern.lastIndex = 0;
-      if (moneyMatches.length) {
-        const chosen = moneyMatches[moneyMatches.length - 1];
-        if (!isNegativeMoney(line, chosen)) {
-          const amount = moneyToNumber(chosen[1]);
-          if (Number.isFinite(amount) && amount > 0) {
-            const installmentMatch = `${pendingDescription} ${line}`.match(installmentPattern);
-            item = {
-              description: cleanDescription(pendingDescription, ''),
-              amount,
-              date: parseDate(`${pendingDescription} ${line}`, fallbackYear),
-              installment: installmentMatch
-                ? { current: Number(installmentMatch[1]), total: Number(installmentMatch[2]) }
-                : undefined,
-              sourceLine: `${pendingDescription} | ${line}`,
-            };
-          }
-        }
-      }
-    }
-
+    const item = parseItem(line, year, pendingDescription);
     if (item) {
-      if (section === 'future') futureItems.push(item);
-      else currentItems.push(item);
+      if (section === 'future') future.push(item);
+      else current.push(item);
       pendingDescription = '';
       continue;
     }
 
-    if (
-      !summaryLinePattern.test(line) &&
-      !ignoredLinePattern.test(line) &&
-      likelyExpenseDescription(line) &&
-      !/^\d{1,2}[./-]\d{1,2}/.test(line)
-    ) {
-      pendingDescription = line;
-    }
+    if (validDescription(line) && !datePattern.test(line)) pendingDescription = line;
   }
 
-  return {
-    currentItems: deduplicate(currentItems),
-    futureItems: deduplicate(futureItems),
-  };
-}
-
-function mergeItems(primary: ExtractedDocumentItem[], fallback: ExtractedDocumentItem[]) {
-  if (!primary.length) return deduplicate(fallback);
-  const merged = [...primary];
-  for (const item of fallback) {
-    const normalized = normalizeDescription(item.description);
-    const duplicate = merged.some((existing) => {
-      const sameInstallment =
-        !item.installment ||
-        !existing.installment ||
-        (item.installment.current === existing.installment.current &&
-          item.installment.total === existing.installment.total);
-      return (
-        normalizeDescription(existing.description) === normalized &&
-        Math.abs(existing.amount - item.amount) < 0.01 &&
-        sameInstallment
-      );
-    });
-    if (!duplicate) merged.push(item);
-  }
-  return deduplicate(merged);
+  return { current: deduplicate(current), future: deduplicate(future) };
 }
 
 export function refineInvoiceExtraction(
@@ -283,25 +209,19 @@ export function refineInvoiceExtraction(
     return base;
   }
 
-  const parsed = classifySections(text, base.dueDate);
-  const baseExpenses = filterBaseExpenses(base.items);
-  const items = mergeItems(parsed.currentItems, baseExpenses).filter(
-    (item) => !parsed.futureItems.some((future) => future.sourceLine === item.sourceLine),
-  );
+  const parsed = parseSections(text, base.dueDate);
+  const futureSourceLines = new Set(parsed.future.map((item) => item.sourceLine));
+  const fallback = safeBaseItems(base.items).filter((item) => !futureSourceLines.has(item.sourceLine));
+  const items = merge(parsed.current, fallback);
   const itemsTotal = items.length ? items.reduce((sum, item) => sum + item.amount, 0) : undefined;
-  const invoiceTotal = detectInvoiceTotal(text) || base.value || itemsTotal;
 
   return {
     ...base,
     documentType: 'invoice',
-    value: invoiceTotal,
+    value: itemsTotal,
     items: items.length ? items : undefined,
     itemsTotal,
-    futureItems: parsed.futureItems.length ? parsed.futureItems : undefined,
-    confidence: Math.min(0.99, Math.max(base.confidence, items.length >= 2 ? 0.82 : base.confidence)),
+    futureItems: parsed.future.length ? parsed.future : undefined,
+    confidence: Math.min(0.99, Math.max(base.confidence, items.length >= 2 ? 0.84 : base.confidence)),
   };
-}
-
-export function normalizeInvoiceDescription(value: string) {
-  return normalizeDescription(value);
 }
