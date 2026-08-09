@@ -41,6 +41,9 @@ interface FinanceState {
   addCard: (card: Omit<CreditCard, 'id'>) => void;
   updateCard: (id: string, patch: Partial<CreditCard>) => void;
   deleteCard: (id: string) => void;
+  addGoal: (goal: Omit<Goal, 'id'>) => void;
+  updateGoal: (id: string, patch: Partial<Omit<Goal, 'id'>>) => void;
+  deleteGoal: (id: string) => void;
   addAsset: (asset: Omit<Asset, 'id' | 'updatedAt'>) => void;
   updateAsset: (id: string, patch: Partial<Omit<Asset, 'id'>>) => void;
   deleteAsset: (id: string) => void;
@@ -132,6 +135,20 @@ export const useFinanceStore = create<FinanceState>()(
 
       deleteCard(id) {
         set((state) => ({ cards: state.cards.filter((item) => item.id !== id) }));
+      },
+
+      addGoal(goal) {
+        set((state) => ({ goals: [...state.goals, { ...goal, id: createId('goal') }] }));
+      },
+
+      updateGoal(id, patch) {
+        set((state) => ({
+          goals: state.goals.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+        }));
+      },
+
+      deleteGoal(id) {
+        set((state) => ({ goals: state.goals.filter((item) => item.id !== id) }));
       },
 
       addAsset(asset) {

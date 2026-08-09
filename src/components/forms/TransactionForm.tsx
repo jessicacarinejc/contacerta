@@ -10,6 +10,7 @@ export function TransactionForm({ onDone }: { onDone: () => void }) {
 
   const [type, setType] = useState<TransactionType>('expense');
   const [description, setDescription] = useState('');
+  const [otherExpenseDescription, setOtherExpenseDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [dueDate, setDueDate] = useState('');
@@ -30,12 +31,18 @@ export function TransactionForm({ onDone }: { onDone: () => void }) {
     }
   }, [categoryId, filtered]);
 
+  useEffect(() => {
+    if (!accountId && accounts[0]?.id) setAccountId(accounts[0].id);
+  }, [accountId, accounts]);
+
   function submit(event: FormEvent) {
     event.preventDefault();
     const value = Number(amount.replace(',', '.'));
-    const normalizedDescription = description.trim();
+    const normalizedDescription = isOtherExpense
+      ? otherExpenseDescription.trim()
+      : description.trim();
 
-    if (!normalizedDescription || value <= 0) return;
+    if (!normalizedDescription || value <= 0 || !accountId) return;
 
     addTransaction({
       description: normalizedDescription,
@@ -73,24 +80,32 @@ export function TransactionForm({ onDone }: { onDone: () => void }) {
         </select>
       </label>
 
-      <label className="span-2">
-        {isOtherExpense ? 'Qual é a outra despesa?' : 'Descrição'}
-        <input
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-          placeholder={
-            isOtherExpense
-              ? 'Ex.: material de limpeza, presente, manutenção, taxa...'
-              : 'Informe uma descrição para o lançamento'
-          }
-          required
-        />
-        {isOtherExpense && (
+      {isOtherExpense ? (
+        <label className="span-2 other-expense-field">
+          Descreva qual é a outra despesa
+          <input
+            value={otherExpenseDescription}
+            onChange={(event) => setOtherExpenseDescription(event.target.value)}
+            placeholder="Ex.: material de limpeza, presente, manutenção, taxa, pet..."
+            autoFocus
+            required
+          />
           <small className="form-field-hint">
-            Descreva livremente a despesa para ela aparecer identificada nas movimentações e relatórios.
+            Este campo é livre. O texto digitado será a descrição exibida nas movimentações,
+            relatórios e exportações.
           </small>
-        )}
-      </label>
+        </label>
+      ) : (
+        <label className="span-2">
+          Descrição
+          <input
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder="Informe uma descrição para o lançamento"
+            required
+          />
+        </label>
+      )}
 
       <label>
         Valor
@@ -116,7 +131,10 @@ export function TransactionForm({ onDone }: { onDone: () => void }) {
 
       <label>
         Conta
-        <select value={accountId} onChange={(event) => setAccountId(event.target.value)}>
+        <select value={accountId} onChange={(event) => setAccountId(event.target.value)} required>
+          <option value="" disabled>
+            Selecione uma conta
+          </option>
           {accounts.map((account) => (
             <option key={account.id} value={account.id}>
               {account.name}
@@ -141,7 +159,9 @@ export function TransactionForm({ onDone }: { onDone: () => void }) {
         <Button type="button" variant="secondary" onClick={onDone}>
           Cancelar
         </Button>
-        <Button type="submit">Salvar lançamento</Button>
+        <Button type="submit" disabled={accounts.length === 0}>
+          Salvar lançamento
+        </Button>
       </div>
     </form>
   );
