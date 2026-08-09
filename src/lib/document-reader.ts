@@ -26,6 +26,12 @@ function isImageFile(file: File) {
   return file.type.startsWith('image/') || imageExtensions.some((extension) => name.endsWith(extension));
 }
 
+function errorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  return 'erro desconhecido';
+}
+
 export async function hashFile(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
   const digest = await crypto.subtle.digest('SHA-256', buffer);
@@ -78,8 +84,8 @@ async function decodeImage(file: File): Promise<CanvasImageSource & { width: num
     try {
       return await createImageBitmap(file);
     } catch {
-      // Alguns WebViews Android expõem createImageBitmap, mas falham com arquivos
-      // vindos do seletor nativo. O fallback abaixo usa uma URL blob local.
+      // Alguns WebViews Android anunciam createImageBitmap, mas não conseguem
+      // decodificar arquivos vindos do seletor nativo. O fallback usa uma URL blob.
     }
   }
 
@@ -94,8 +100,6 @@ async function decodeImage(file: File): Promise<CanvasImageSource & { width: num
     });
     return image;
   } finally {
-    // A imagem já foi decodificada quando o onload é disparado.
-    // Revogar aqui evita vazamento de memória em importações repetidas.
     URL.revokeObjectURL(url);
   }
 }
@@ -104,39 +108,86 @@ async function imageToCanvas(file: File) {
   const image = await decodeImage(file);
   const canvas = document.createElement('canvas');
   const maxDimension = Number(import.meta.env.VITE_OCR_MAX_IMAGE_DIMENSION || 2400);
-  const scale = Math.min(1, maxDimension / image.width, maxDimension / image.height);
+  const longestSide = Math.max(image.width, image.height);
+  const scale = Math.min(maxDimension / Math.max(longestSide, 1), 1.6);
+
   canvas.width = Math.max(1, Math.round(image.width * scale));
   canvas.height = Math.max(1, Math.round(image.height * scale));
+
   const context = canvas.getContext('2d', { willReadFrequently: true });
   if (!context) throw new Error('Não foi possível preparar a imagem.');
+
+  // Fundo branco evita artefatos de OCR em PNG/WebP com transparência.
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
 
   if ('close' in image && typeof image.close === 'function') image.close();
   return canvas;
 }
 
+async function createOcrWorker(
+  language: string,
+  onProgress?: (progress: number, message: string) => void,
+) {
+  return createWorker(language, 1, {
+    workerBlobURL: true,
+    logger: (event) => {
+      if (event.status === 'loading tesseract core') {
+        onProgress?.(8, 'Carregando mecanismo de OCR');
+      } else if (event.status === 'loading language traineddata') {
+        onProgress?.(10, 'Carregando idioma do OCR');
+      } else if (event.status === 'initializing api') {
+        onProgress?.(13, 'Inicializando OCR');
+      } else if (event.status === 'recognizing text') {
+        onProgress?.(Math.round(event.progress * 78) + 16, 'Reconhecendo o conteúdo');
+      }
+    },
+  });
+}
+
 async function runOcr(
   canvases: HTMLCanvasElement[],
   onProgress?: (progress: number, message: string) => void,
 ) {
-  const worker = await createWorker(import.meta.env.VITE_OCR_LANG || 'por', 1, {
-    logger: (event) => {
-      if (event.status === 'recognizing text') {
-        onProgress?.(Math.round(event.progress * 88) + 8, 'Reconhecendo o conteúdo');
-      }
-    },
-  });
+  const configuredLanguage = import.meta.env.VITE_OCR_LANG || 'por';
+  let worker: Awaited<ReturnType<typeof createWorker>>;
+
+  onProgress?.(7, 'Iniciando OCR');
+  try {
+    worker = await createOcrWorker(configuredLanguage, onProgress);
+  } catch (primaryError) {
+    if (configuredLanguage === 'eng') {
+      throw new Error(
+        `Não foi possível iniciar o OCR. Verifique a conexão com a internet e tente novamente. Detalhe: ${errorMessage(primaryError)}`,
+      );
+    }
+
+    // Em alguns aparelhos o pacote de idioma português pode falhar na primeira
+    // inicialização. O modelo inglês ainda reconhece textos latinos e números,
+    // permitindo que o usuário prossiga com a conferência manual.
+    onProgress?.(9, 'Tentando modo de compatibilidade do OCR');
+    try {
+      worker = await createOcrWorker('eng', onProgress);
+    } catch (fallbackError) {
+      throw new Error(
+        `Não foi possível iniciar o OCR no aparelho. Verifique a conexão com a internet na primeira leitura e tente novamente. Detalhe: ${errorMessage(fallbackError)}`,
+      );
+    }
+  }
 
   try {
     const chunks: string[] = [];
     for (let index = 0; index < canvases.length; index += 1) {
       onProgress?.(
-        8 + Math.round((index / Math.max(canvases.length, 1)) * 80),
-        `Lendo página ${index + 1}`,
+        16 + Math.round((index / Math.max(canvases.length, 1)) * 76),
+        canvases.length > 1 ? `Lendo página ${index + 1}` : 'Lendo imagem',
       );
       chunks.push((await worker.recognize(canvases[index])).data.text);
     }
     return normalizeText(chunks.join('\n'));
+  } catch (error) {
+    throw new Error(`Falha durante a leitura OCR: ${errorMessage(error)}`);
   } finally {
     await worker.terminate();
   }
