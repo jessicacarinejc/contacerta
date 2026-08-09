@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { parseFinancialDocument } from './document-reader';
-import { finalizeFinancialResult } from './document-reader-refined';
+import type { ExtractedDocumentData } from '../types/finance';
 import { buildFutureInstallments } from './installments';
+import { refineInvoiceExtraction } from './invoice-refinement';
 
 const petrobrasText = `
 PETROBRAS
@@ -50,31 +50,34 @@ Total parcelado para próxima fatura R$ 402,51
 
 describe('leitura estrita de fatura', () => {
   it('considera somente despesas e ignora pagamento, limite, saldos e totais', () => {
-    const base = parseFinancialDocument(petrobrasText, 'PETROBRAS.pdf');
-    const result = finalizeFinancialResult(
-      { hash: 'test', text: petrobrasText, extracted: base },
-      'PETROBRAS.pdf',
-    );
+    const base: ExtractedDocumentData = {
+      documentType: 'invoice',
+      value: 4_999.99,
+      dueDate: '2026-08-06',
+      confidence: 0.55,
+      items: [],
+    };
+    const result = refineInvoiceExtraction(petrobrasText, 'PETROBRAS.pdf', base);
 
-    expect(result.extracted.documentType).toBe('invoice');
-    expect(result.extracted.items).toHaveLength(10);
-    expect(result.extracted.itemsTotal).toBeCloseTo(768.8, 2);
-    expect(result.extracted.value).toBeCloseTo(768.8, 2);
-    expect(result.extracted.items?.some((item) => /pgto|cash/i.test(item.description))).toBe(false);
-    expect(result.extracted.items?.some((item) => item.amount === 1059.75)).toBe(false);
-    expect(result.extracted.items?.some((item) => item.amount === 21830)).toBe(false);
-    expect(result.extracted.futureItems).toHaveLength(5);
+    expect(result.documentType).toBe('invoice');
+    expect(result.items).toHaveLength(10);
+    expect(result.itemsTotal).toBeCloseTo(768.8, 2);
+    expect(result.value).toBeCloseTo(768.8, 2);
+    expect(result.items?.some((item) => /pgto|cash/i.test(item.description))).toBe(false);
+    expect(result.items?.some((item) => item.amount === 1059.75)).toBe(false);
+    expect(result.items?.some((item) => item.amount === 21830)).toBe(false);
+    expect(result.futureItems).toHaveLength(5);
   });
 
   it('projeta todas as parcelas restantes e usa o valor explícito da próxima parcela', () => {
     const current = {
-      description: 'L.R. MODA LTD',
+      description: 'L.R. MODA LTD SANTO ANTONI',
       amount: 57.63,
       installment: { current: 1, total: 5 },
     };
     const explicit = [
       {
-        description: 'L.R. MODA LTD',
+        description: 'L.R. MODA LTD SANTO ANTONIO',
         amount: 57.59,
         installment: { current: 2, total: 5 },
       },
