@@ -232,6 +232,12 @@ export const useFinanceStore = create<FinanceState>()(
             ? (extracted.items || []).filter((item) => item.amount > 0 && item.description.trim())
             : [];
 
+        if (extracted.documentType === 'invoice' && invoiceItems.length === 0) {
+          // Segurança: nunca transforma o total de uma fatura em despesa se as compras individuais
+          // não puderam ser identificadas. Isso evita duplicidade e lançamentos absurdos.
+          return false;
+        }
+
         if (invoiceItems.length > 0) {
           for (const item of invoiceItems) {
             get().addTransaction({
