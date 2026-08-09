@@ -17,6 +17,7 @@ export function TransactionForm({ onDone }: { onDone: () => void }) {
   const [accountId, setAccountId] = useState(accounts[0]?.id || '');
   const [categoryId, setCategoryId] = useState('cat_other');
   const [status, setStatus] = useState<TransactionStatus>('paid');
+  const [thirdParty, setThirdParty] = useState('');
 
   const filtered = useMemo(
     () => categories.filter((category) => category.type === type || category.type === 'both'),
@@ -54,6 +55,7 @@ export function TransactionForm({ onDone }: { onDone: () => void }) {
       accountId,
       categoryId,
       status,
+      thirdParty: type === 'expense' ? thirdParty.trim() || undefined : undefined,
     });
     onDone();
   }
@@ -104,6 +106,20 @@ export function TransactionForm({ onDone }: { onDone: () => void }) {
             placeholder="Informe uma descrição para o lançamento"
             required
           />
+        </label>
+      )}
+
+      {type === 'expense' && (
+        <label className="span-2">
+          Compra para terceiro (opcional)
+          <input
+            value={thirdParty}
+            onChange={(event) => setThirdParty(event.target.value)}
+            placeholder="Ex.: Maria, João, Empresa X"
+          />
+          <small className="form-field-hint">
+            Use este campo quando a despesa foi paga por você, mas pertence a outra pessoa. Depois será possível filtrar e gerar relatório por terceiro.
+          </small>
         </label>
       )}
 

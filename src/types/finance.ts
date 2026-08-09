@@ -36,6 +36,8 @@ export interface Transaction {
   notes?: string;
   recurring?: boolean;
   installment?: { current: number; total: number };
+  thirdParty?: string;
+  futureInstallment?: boolean;
   documentId?: string;
   createdAt: string;
 }
@@ -96,6 +98,7 @@ export interface ExtractedDocumentData {
   confidence: number;
   items?: ExtractedDocumentItem[];
   itemsTotal?: number;
+  futureItems?: ExtractedDocumentItem[];
 }
 
 export interface DocumentRecord {

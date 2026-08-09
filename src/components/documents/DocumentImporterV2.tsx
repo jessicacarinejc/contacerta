@@ -9,8 +9,11 @@ import {
   UploadCloud,
   XCircle,
 } from 'lucide-react';
-import { PdfPasswordError, readFinancialDocument } from '../../lib/document-reader';
-import { readFinancialImage } from '../../lib/image-document-reader';
+import {
+  PdfPasswordError,
+  readFinancialDocumentRefined,
+  readFinancialImageRefined,
+} from '../../lib/document-reader-refined';
 import { toCurrency } from '../../lib/currency';
 import { useFinanceStore } from '../../store/useFinanceStore';
 import { Badge, Button, Card, EmptyState, Progress } from '../ui';
@@ -79,15 +82,27 @@ export function DocumentImporterV2() {
   const [passwordRequest, setPasswordRequest] = useState<PasswordRequest | null>(null);
   const [pdfPassword, setPdfPassword] = useState('');
   const [retryingPassword, setRetryingPassword] = useState(false);
+  const [thirdParty, setThirdParty] = useState('');
+  const [thirdPartiesByItem, setThirdPartiesByItem] = useState<Record<number, string>>({});
 
   const selected = documents.find((item) => item.id === selectedId) || documents[0];
   const isInvoice = selected?.extracted?.documentType === 'invoice';
   const invoiceItems = isInvoice ? selected?.extracted?.items || [] : [];
+  const futureInvoiceItems = isInvoice ? selected?.extracted?.futureItems || [] : [];
   const selectedIsImage = selected ? isStoredImage(selected.name, selected.mimeType) : false;
   const isImageTransactionList = selectedIsImage && isInvoice && invoiceItems.length >= 2;
-  const displayedValue = isImageTransactionList
+  const displayedValue = isInvoice
     ? selected?.extracted?.itemsTotal
     : selected?.extracted?.value;
+  const projectedFutureCount = invoiceItems.reduce((total, item) => {
+    if (!item.installment || item.installment.current >= item.installment.total) return total;
+    return total + (item.installment.total - item.installment.current);
+  }, 0);
+
+  function resetThirdPartyFields() {
+    setThirdParty('');
+    setThirdPartiesByItem({});
+  }
 
   async function processFile(file: File, password?: string, existingId?: string) {
     if (file.size > maxFileSizeBytes) {
@@ -119,8 +134,8 @@ export function DocumentImporterV2() {
       };
 
       const result = isImageInput(file)
-        ? await readFinancialImage(file, onProgress)
-        : await readFinancialDocument(file, onProgress, password);
+        ? await readFinancialImageRefined(file, onProgress)
+        : await readFinancialDocumentRefined(file, onProgress, password);
 
       const duplicate = useFinanceStore
         .getState()
@@ -137,15 +152,14 @@ export function DocumentImporterV2() {
 
       setPasswordRequest(null);
       setPdfPassword('');
+      resetThirdPartyFields();
       const itemCount = result.extracted.items?.length || 0;
       setMessage(
         duplicate
           ? 'Documento possivelmente duplicado.'
-          : isImageInput(file) && result.extracted.documentType === 'invoice' && itemCount > 1
-            ? `Imagem pronta para revisão: ${itemCount} movimentação(ões) individual(is) detectada(s).`
-            : result.extracted.documentType === 'invoice' && itemCount > 0
-              ? `Fatura pronta para revisão: ${itemCount} compra(s) individual(is) detectada(s).`
-              : 'Documento pronto para revisão.',
+          : result.extracted.documentType === 'invoice' && itemCount > 0
+            ? `Fatura pronta para revisão: ${itemCount} despesa(s) individual(is). Pagamentos e créditos foram ignorados.`
+            : 'Documento pronto para revisão.',
       );
       return true;
     } catch (error) {
@@ -172,6 +186,7 @@ export function DocumentImporterV2() {
     const file = event.target.files?.[0];
     setPasswordRequest(null);
     setPdfPassword('');
+    resetThirdPartyFields();
     if (file) void processFile(file);
     event.target.value = '';
   }
@@ -181,6 +196,7 @@ export function DocumentImporterV2() {
     setDragging(false);
     setPasswordRequest(null);
     setPdfPassword('');
+    resetThirdPartyFields();
     const file = event.dataTransfer.files?.[0];
     if (file) void processFile(file);
   }
@@ -273,7 +289,10 @@ export function DocumentImporterV2() {
               <button
                 key={item.id}
                 className={`document-row ${selected?.id === item.id ? 'selected' : ''}`}
-                onClick={() => setSelectedId(item.id)}
+                onClick={() => {
+                  setSelectedId(item.id);
+                  resetThirdPartyFields();
+                }}
               >
                 <span className="document-file-icon">
                   {isStoredImage(item.name, item.mimeType) ? <FileImage /> : <FileText />}
@@ -347,16 +366,12 @@ export function DocumentImporterV2() {
                 Tipo
                 <strong>
                   {isImageTransactionList
-                    ? 'lista de movimentações'
+                    ? 'lista de despesas'
                     : selected.extracted?.documentType || 'Não identificado'}
                 </strong>
               </label>
               <label>
-                {isImageTransactionList
-                  ? 'Soma dos itens visíveis'
-                  : isInvoice
-                    ? 'Total da fatura (referência)'
-                    : 'Valor'}
+                {isInvoice ? 'Total das despesas desta fatura' : 'Valor'}
                 <strong>{displayedValue ? toCurrency(displayedValue) : 'Revisar'}</strong>
               </label>
               <label>
@@ -387,8 +402,8 @@ export function DocumentImporterV2() {
               <section className="invoice-items-review">
                 <div className="invoice-items-heading">
                   <div>
-                    <small>{isImageTransactionList ? 'Leitura estruturada da imagem' : 'Importação de fatura'}</small>
-                    <h3>{isImageTransactionList ? 'Movimentações individuais detectadas' : 'Compras individuais detectadas'}</h3>
+                    <small>Somente despesas</small>
+                    <h3>Compras individuais detectadas</h3>
                   </div>
                   <Badge tone={invoiceItems.length ? 'positive' : 'danger'}>
                     {invoiceItems.length} item(ns)
@@ -399,9 +414,9 @@ export function DocumentImporterV2() {
                   <div className="invoice-items-warning">
                     <AlertDocument />
                     <div>
-                      <strong>Nenhuma movimentação individual foi identificada com segurança.</strong>
+                      <strong>Nenhuma despesa individual foi identificada com segurança.</strong>
                       <p>
-                        Por proteção, o Conta Certa não lançará automaticamente um valor isolado como se representasse toda a imagem ou fatura.
+                        Por proteção, o Conta Certa não lançará saldo anterior, pagamento, crédito, limite ou total isolado como despesa.
                       </p>
                     </div>
                   </div>
@@ -425,9 +440,21 @@ export function DocumentImporterV2() {
                             className="invoice-item-row"
                             key={`${item.description}-${item.amount}-${item.date || ''}-${item.time || ''}-${index}`}
                           >
-                            <div>
+                            <div className="invoice-item-details">
                               <strong>{item.description}</strong>
                               <span>{metadata.join(' · ')}</span>
+                              <input
+                                className="invoice-third-party-input"
+                                value={thirdPartiesByItem[index] || ''}
+                                onChange={(event) =>
+                                  setThirdPartiesByItem((current) => ({
+                                    ...current,
+                                    [index]: event.target.value,
+                                  }))
+                                }
+                                placeholder="Compra para terceiro (opcional)"
+                                aria-label={`Terceiro da despesa ${item.description}`}
+                              />
                             </div>
                             <b>{toCurrency(item.amount)}</b>
                           </div>
@@ -435,13 +462,23 @@ export function DocumentImporterV2() {
                       })}
                     </div>
                     <div className="invoice-items-total">
-                      <span>{isImageTransactionList ? 'Soma das movimentações visíveis' : 'Soma dos itens reconhecidos'}</span>
+                      <span>Total das despesas reconhecidas</span>
                       <strong>{toCurrency(selected.extracted?.itemsTotal || 0)}</strong>
                     </div>
                     <p className="form-hint">
-                      Cada item será criado como uma despesa separada. Valores de total, limite ou resumo não são lançados novamente como despesa.
+                      Pagamentos da fatura anterior, créditos, estornos, saldo anterior, limites, subtotais e totais informativos são ignorados. Cada compra será lançada separadamente.
                     </p>
                   </>
+                )}
+
+                {(futureInvoiceItems.length > 0 || projectedFutureCount > 0) && (
+                  <div className="processing-message">
+                    <FileText size={18} />
+                    {projectedFutureCount} parcela(s) futura(s) serão criadas na aba Lançamentos futuros.
+                    {futureInvoiceItems.length > 0
+                      ? ` A própria fatura informou ${futureInvoiceItems.length} parcela(s) da próxima fatura e esses valores serão usados quando houver correspondência.`
+                      : ''}
+                  </div>
                 )}
               </section>
             )}
@@ -479,6 +516,14 @@ export function DocumentImporterV2() {
                     </option>
                   ))}
               </select>
+              {isInvoice && (
+                <input
+                  value={thirdParty}
+                  onChange={(event) => setThirdParty(event.target.value)}
+                  placeholder="Terceiro padrão para todas (opcional)"
+                  aria-label="Terceiro padrão para todas as despesas"
+                />
+              )}
               <Button
                 disabled={
                   accounts.length === 0 ||
@@ -491,15 +536,19 @@ export function DocumentImporterV2() {
                     selected.id,
                     (document.getElementById('doc-account') as HTMLSelectElement)?.value,
                     (document.getElementById('doc-category') as HTMLSelectElement)?.value,
+                    thirdParty,
+                    thirdPartiesByItem,
                   );
                   if (!approved) {
                     setMessage(
                       isInvoice
-                        ? 'O documento não foi lançado. É necessário identificar movimentações individuais antes da confirmação.'
+                        ? 'O documento não foi lançado. É necessário identificar despesas individuais antes da confirmação.'
                         : 'Não foi possível confirmar. Verifique a conta e a categoria.',
                     );
                   } else if (isInvoice) {
-                    setMessage(`${invoiceItems.length} despesa(s) individual(is) criada(s) a partir do documento.`);
+                    setMessage(
+                      `${invoiceItems.length} despesa(s) atual(is) criada(s) e ${projectedFutureCount} parcela(s) futura(s) projetada(s).`,
+                    );
                   } else {
                     setMessage('Lançamento confirmado.');
                   }
@@ -508,7 +557,7 @@ export function DocumentImporterV2() {
                 {selected.status === 'approved'
                   ? 'Lançamento confirmado'
                   : isInvoice && invoiceItems.length
-                    ? `Confirmar ${invoiceItems.length} lançamentos`
+                    ? `Confirmar ${invoiceItems.length} despesas`
                     : 'Confirmar lançamento'}
               </Button>
             </div>

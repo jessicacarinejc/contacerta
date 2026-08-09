@@ -10,6 +10,8 @@ import {
   transactions as demoTransactions,
 } from '../data/seed';
 import { createId } from '../lib/ids';
+import { buildFutureInstallments } from '../lib/installments';
+import { normalizeInvoiceDescription } from '../lib/invoice-refinement';
 import { platformStorage } from '../lib/platform-storage';
 import type {
   Account,
@@ -52,7 +54,13 @@ interface FinanceState {
   deleteAsset: (id: string) => void;
   addDocument: (document: Omit<DocumentRecord, 'id' | 'createdAt'>) => string;
   updateDocument: (id: string, patch: Partial<DocumentRecord>) => void;
-  approveDocument: (id: string, accountId?: string, categoryId?: string) => boolean;
+  approveDocument: (
+    id: string,
+    accountId?: string,
+    categoryId?: string,
+    thirdParty?: string,
+    thirdPartiesByItem?: Record<number, string>,
+  ) => boolean;
   updateSettings: (patch: Partial<FinanceSettings>) => void;
   clearFinancialData: () => void;
   resetDemo: () => void;
@@ -66,6 +74,22 @@ const defaultSettings: FinanceSettings = {
   emergencyReserveMonths: 6,
   notificationsEnabled: true,
 };
+
+function sameInstallmentTransaction(
+  transaction: Transaction,
+  description: string,
+  installment: { current: number; total: number },
+  accountId: string,
+) {
+  return (
+    transaction.type === 'expense' &&
+    transaction.accountId === accountId &&
+    transaction.installment?.current === installment.current &&
+    transaction.installment?.total === installment.total &&
+    normalizeInvoiceDescription(transaction.description) ===
+      normalizeInvoiceDescription(description)
+  );
+}
 
 export const useFinanceStore = create<FinanceState>()(
   persist(
@@ -210,10 +234,10 @@ export const useFinanceStore = create<FinanceState>()(
         }));
       },
 
-      approveDocument(id, accountId, categoryId) {
+      approveDocument(id, accountId, categoryId, thirdParty, thirdPartiesByItem) {
         const state = get();
         const document = state.documents.find((item) => item.id === id);
-        if (!document?.extracted) return false;
+        if (!document?.extracted || document.status === 'approved') return false;
 
         const resolvedAccountId =
           accountId && state.accounts.some((item) => item.id === accountId)
@@ -231,29 +255,108 @@ export const useFinanceStore = create<FinanceState>()(
           extracted.documentType === 'invoice'
             ? (extracted.items || []).filter((item) => item.amount > 0 && item.description.trim())
             : [];
+        const normalizedThirdParty = thirdParty?.trim() || undefined;
 
         if (extracted.documentType === 'invoice' && invoiceItems.length === 0) {
-          // Segurança: nunca transforma o total de uma fatura em despesa se as compras individuais
-          // não puderam ser identificadas. Isso evita duplicidade e lançamentos absurdos.
+          // Segurança: uma fatura nunca vira um único lançamento pelo total.
           return false;
         }
 
         if (invoiceItems.length > 0) {
-          for (const item of invoiceItems) {
-            get().addTransaction({
-              description: item.description,
-              type: 'expense',
-              amount: item.amount,
-              date: item.date || new Date().toISOString().slice(0, 10),
+          invoiceItems.forEach((item, index) => {
+            const itemThirdParty =
+              thirdPartiesByItem?.[index]?.trim() || normalizedThirdParty || undefined;
+            const projectedCurrent = item.installment
+              ? get().transactions.find(
+                  (transaction) =>
+                    transaction.futureInstallment &&
+                    sameInstallmentTransaction(
+                      transaction,
+                      item.description,
+                      item.installment!,
+                      resolvedAccountId,
+                    ),
+                )
+              : undefined;
+
+            if (projectedCurrent) {
+              get().updateTransaction(projectedCurrent.id, {
+                description: item.description,
+                amount: item.amount,
+                date: item.date || projectedCurrent.date,
+                dueDate,
+                categoryId: resolvedCategoryId,
+                status: dueDate ? 'pending' : projectedCurrent.status,
+                installment: item.installment,
+                thirdParty: itemThirdParty || projectedCurrent.thirdParty,
+                futureInstallment: false,
+                notes: `Parcela confirmada pela fatura ${document.name}. Pagamentos, créditos, saldos e limites foram ignorados.`,
+                documentId: id,
+              });
+            } else {
+              get().addTransaction({
+                description: item.description,
+                type: 'expense',
+                amount: item.amount,
+                date: item.date || new Date().toISOString().slice(0, 10),
+                dueDate,
+                accountId: resolvedAccountId,
+                categoryId: resolvedCategoryId,
+                status: dueDate ? 'pending' : 'paid',
+                installment: item.installment,
+                thirdParty: itemThirdParty,
+                notes: `Despesa importada da fatura ${document.name}. Pagamentos, créditos, saldos e limites foram ignorados.`,
+                documentId: id,
+              });
+            }
+
+            const futureDrafts = buildFutureInstallments(
+              item,
               dueDate,
-              accountId: resolvedAccountId,
-              categoryId: resolvedCategoryId,
-              status: dueDate ? 'pending' : 'paid',
-              installment: item.installment,
-              notes: `Item importado da fatura ${document.name}. O valor total da fatura não foi lançado como nova despesa.`,
-              documentId: id,
-            });
-          }
+              extracted.futureItems || [],
+            );
+            for (const future of futureDrafts) {
+              const existingFuture = get().transactions.find(
+                (transaction) =>
+                  transaction.futureInstallment &&
+                  sameInstallmentTransaction(
+                    transaction,
+                    future.description,
+                    future.installment,
+                    resolvedAccountId,
+                  ),
+              );
+
+              if (existingFuture) {
+                get().updateTransaction(existingFuture.id, {
+                  amount: future.amount,
+                  date: future.dueDate,
+                  dueDate: future.dueDate,
+                  categoryId: resolvedCategoryId,
+                  status: 'pending',
+                  thirdParty: itemThirdParty || existingFuture.thirdParty,
+                  notes: `Parcela futura atualizada a partir da fatura ${document.name}.`,
+                  documentId: id,
+                });
+              } else {
+                get().addTransaction({
+                  description: future.description,
+                  type: 'expense',
+                  amount: future.amount,
+                  date: future.dueDate,
+                  dueDate: future.dueDate,
+                  accountId: resolvedAccountId,
+                  categoryId: resolvedCategoryId,
+                  status: 'pending',
+                  installment: future.installment,
+                  thirdParty: itemThirdParty,
+                  futureInstallment: true,
+                  notes: `Parcela futura projetada a partir da fatura ${document.name}.`,
+                  documentId: id,
+                });
+              }
+            }
+          });
         } else {
           if (!extracted.value) return false;
           get().addTransaction({
@@ -265,6 +368,7 @@ export const useFinanceStore = create<FinanceState>()(
             accountId: resolvedAccountId,
             categoryId: resolvedCategoryId,
             status: dueDate ? 'pending' : 'paid',
+            thirdParty: normalizedThirdParty,
             documentId: id,
           });
         }

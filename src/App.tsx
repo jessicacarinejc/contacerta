@@ -8,6 +8,7 @@ import { BudgetsPage } from './pages/BudgetsPage';
 import { CardsPage } from './pages/CardsPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DocumentsPage } from './pages/DocumentsPage';
+import { FutureTransactionsPage } from './pages/FutureTransactionsPage';
 import { GoalsPage } from './pages/GoalsPage';
 import { IntelligencePage } from './pages/IntelligencePage';
 import { LoginPage } from './pages/LoginPage';
@@ -46,6 +47,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/movimentacoes" element={<TransactionsPage />} />
+          <Route path="/lancamentos-futuros" element={<FutureTransactionsPage />} />
           <Route path="/contas" element={<AccountsPage />} />
           <Route path="/cartoes" element={<CardsPage />} />
           <Route path="/contas-a-pagar" element={<BillsPage type="payable" />} />

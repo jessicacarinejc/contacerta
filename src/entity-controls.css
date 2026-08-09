@@ -203,7 +203,7 @@
   margin-top: 12px;
   display: grid;
   gap: 7px;
-  max-height: 360px;
+  max-height: 420px;
   overflow: auto;
 }
 
@@ -222,6 +222,10 @@
   min-width: 0;
 }
 
+.invoice-item-details {
+  flex: 1 1 auto;
+}
+
 .invoice-item-row strong,
 .invoice-item-row span {
   display: block;
@@ -236,6 +240,14 @@
   margin-top: 3px;
   color: var(--muted);
   font-size: 9px;
+}
+
+.invoice-third-party-input {
+  width: min(100%, 360px);
+  min-height: 34px;
+  margin-top: 8px;
+  font-size: 10px;
+  background: var(--surface-alt);
 }
 
 .invoice-item-row b {
@@ -332,6 +344,11 @@
 
   .invoice-item-row {
     align-items: flex-start;
+  }
+
+  .invoice-third-party-input {
+    width: 100%;
+    min-height: 40px;
   }
 
   .invoice-item-row b {
