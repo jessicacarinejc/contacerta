@@ -50,6 +50,15 @@
   line-height: 1.45;
 }
 
+.form-field-hint {
+  display: block;
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
 .danger-actions {
   display: flex;
   flex-wrap: wrap;
