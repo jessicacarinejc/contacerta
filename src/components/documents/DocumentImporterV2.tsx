@@ -83,6 +83,7 @@ export function DocumentImporterV2() {
   const [pdfPassword, setPdfPassword] = useState('');
   const [retryingPassword, setRetryingPassword] = useState(false);
   const [thirdParty, setThirdParty] = useState('');
+  const [thirdPartiesByItem, setThirdPartiesByItem] = useState<Record<number, string>>({});
 
   const selected = documents.find((item) => item.id === selectedId) || documents[0];
   const isInvoice = selected?.extracted?.documentType === 'invoice';
@@ -97,6 +98,11 @@ export function DocumentImporterV2() {
     if (!item.installment || item.installment.current >= item.installment.total) return total;
     return total + (item.installment.total - item.installment.current);
   }, 0);
+
+  function resetThirdPartyFields() {
+    setThirdParty('');
+    setThirdPartiesByItem({});
+  }
 
   async function processFile(file: File, password?: string, existingId?: string) {
     if (file.size > maxFileSizeBytes) {
@@ -146,7 +152,7 @@ export function DocumentImporterV2() {
 
       setPasswordRequest(null);
       setPdfPassword('');
-      setThirdParty('');
+      resetThirdPartyFields();
       const itemCount = result.extracted.items?.length || 0;
       setMessage(
         duplicate
@@ -180,6 +186,7 @@ export function DocumentImporterV2() {
     const file = event.target.files?.[0];
     setPasswordRequest(null);
     setPdfPassword('');
+    resetThirdPartyFields();
     if (file) void processFile(file);
     event.target.value = '';
   }
@@ -189,6 +196,7 @@ export function DocumentImporterV2() {
     setDragging(false);
     setPasswordRequest(null);
     setPdfPassword('');
+    resetThirdPartyFields();
     const file = event.dataTransfer.files?.[0];
     if (file) void processFile(file);
   }
@@ -281,7 +289,10 @@ export function DocumentImporterV2() {
               <button
                 key={item.id}
                 className={`document-row ${selected?.id === item.id ? 'selected' : ''}`}
-                onClick={() => setSelectedId(item.id)}
+                onClick={() => {
+                  setSelectedId(item.id);
+                  resetThirdPartyFields();
+                }}
               >
                 <span className="document-file-icon">
                   {isStoredImage(item.name, item.mimeType) ? <FileImage /> : <FileText />}
@@ -429,9 +440,21 @@ export function DocumentImporterV2() {
                             className="invoice-item-row"
                             key={`${item.description}-${item.amount}-${item.date || ''}-${item.time || ''}-${index}`}
                           >
-                            <div>
+                            <div className="invoice-item-details">
                               <strong>{item.description}</strong>
                               <span>{metadata.join(' · ')}</span>
+                              <input
+                                className="invoice-third-party-input"
+                                value={thirdPartiesByItem[index] || ''}
+                                onChange={(event) =>
+                                  setThirdPartiesByItem((current) => ({
+                                    ...current,
+                                    [index]: event.target.value,
+                                  }))
+                                }
+                                placeholder="Compra para terceiro (opcional)"
+                                aria-label={`Terceiro da despesa ${item.description}`}
+                              />
                             </div>
                             <b>{toCurrency(item.amount)}</b>
                           </div>
@@ -497,8 +520,8 @@ export function DocumentImporterV2() {
                 <input
                   value={thirdParty}
                   onChange={(event) => setThirdParty(event.target.value)}
-                  placeholder="Compra para terceiro (opcional)"
-                  aria-label="Compra para terceiro"
+                  placeholder="Terceiro padrão para todas (opcional)"
+                  aria-label="Terceiro padrão para todas as despesas"
                 />
               )}
               <Button
@@ -514,6 +537,7 @@ export function DocumentImporterV2() {
                     (document.getElementById('doc-account') as HTMLSelectElement)?.value,
                     (document.getElementById('doc-category') as HTMLSelectElement)?.value,
                     thirdParty,
+                    thirdPartiesByItem,
                   );
                   if (!approved) {
                     setMessage(
