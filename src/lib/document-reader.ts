@@ -11,6 +11,21 @@ export interface DocumentReadResult {
   extracted: ExtractedDocumentData;
 }
 
+const imageExtensions = ['.jpg', '.jpeg', '.png', '.webp'];
+
+function lowerFileName(file: File) {
+  return file.name.toLowerCase().split('?')[0];
+}
+
+function isPdfFile(file: File) {
+  return file.type === 'application/pdf' || lowerFileName(file).endsWith('.pdf');
+}
+
+function isImageFile(file: File) {
+  const name = lowerFileName(file);
+  return file.type.startsWith('image/') || imageExtensions.some((extension) => name.endsWith(extension));
+}
+
 export async function hashFile(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
   const digest = await crypto.subtle.digest('SHA-256', buffer);
@@ -47,8 +62,8 @@ async function renderPdfPages(file: File) {
     const page = await pdf.getPage(pageNumber);
     const viewport = page.getViewport({ scale: 1.7 });
     const canvas = document.createElement('canvas');
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
     const context = canvas.getContext('2d', { willReadFrequently: true });
     if (!context) throw new Error('Não foi possível preparar a página para OCR.');
     await page.render({ canvasContext: context, viewport, canvas }).promise;
@@ -58,16 +73,45 @@ async function renderPdfPages(file: File) {
   return canvases;
 }
 
+async function decodeImage(file: File): Promise<CanvasImageSource & { width: number; height: number }> {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      return await createImageBitmap(file);
+    } catch {
+      // Alguns WebViews Android expõem createImageBitmap, mas falham com arquivos
+      // vindos do seletor nativo. O fallback abaixo usa uma URL blob local.
+    }
+  }
+
+  const url = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    image.decoding = 'async';
+    image.src = url;
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error('O Android não conseguiu abrir esta imagem.'));
+    });
+    return image;
+  } finally {
+    // A imagem já foi decodificada quando o onload é disparado.
+    // Revogar aqui evita vazamento de memória em importações repetidas.
+    URL.revokeObjectURL(url);
+  }
+}
+
 async function imageToCanvas(file: File) {
-  const bitmap = await createImageBitmap(file);
+  const image = await decodeImage(file);
   const canvas = document.createElement('canvas');
-  const scale = Math.min(1, 2200 / bitmap.width);
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
+  const maxDimension = Number(import.meta.env.VITE_OCR_MAX_IMAGE_DIMENSION || 2400);
+  const scale = Math.min(1, maxDimension / image.width, maxDimension / image.height);
+  canvas.width = Math.max(1, Math.round(image.width * scale));
+  canvas.height = Math.max(1, Math.round(image.height * scale));
   const context = canvas.getContext('2d', { willReadFrequently: true });
   if (!context) throw new Error('Não foi possível preparar a imagem.');
-  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  if ('close' in image && typeof image.close === 'function') image.close();
   return canvas;
 }
 
@@ -139,9 +183,7 @@ function parseBeneficiary(text: string) {
 }
 
 const parseBarcode = (text: string) => {
-  const line = text
-    .match(/(?:\d[ .]?){44,48}/)?.[0]
-    ?.replace(/\D/g, '');
+  const line = text.match(/(?:\d[ .]?){44,48}/)?.[0]?.replace(/\D/g, '');
   return line && line.length >= 44 ? line : undefined;
 };
 
@@ -151,15 +193,18 @@ function detectDocumentType(text: string): ExtractedDocumentData['documentType']
     return 'boleto';
   }
   if (/extrato|saldo anterior|saldo disponível|saldo disponivel/.test(lower)) return 'statement';
-  if (/fatura|cartão de crédito|cartao de credito|pagamento mínimo/.test(lower)) return 'invoice';
+  if (
+    /fatura|cartão de crédito|cartao de credito|pagamento mínimo|parcelas? de compras|parcela \d+ de \d+/i.test(
+      lower,
+    )
+  ) {
+    return 'invoice';
+  }
   if (/cupom fiscal|comprovante|recibo|nota fiscal/.test(lower)) return 'receipt';
   return 'other';
 }
 
-export function parseFinancialDocument(
-  text: string,
-  fileName: string,
-): ExtractedDocumentData {
+export function parseFinancialDocument(text: string, fileName: string): ExtractedDocumentData {
   const value = parseValue(text);
   const dueDate = parseDate(text);
   const beneficiary = parseBeneficiary(text);
@@ -172,8 +217,7 @@ export function parseFinancialDocument(
     dueDate,
     beneficiary,
     barcode,
-    description:
-      beneficiary || fileName.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' '),
+    description: beneficiary || fileName.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' '),
     confidence: Math.min(
       0.99,
       0.48 + criticalFields * 0.13 + (barcode ? 0.08 : 0) + (text.length > 250 ? 0.08 : 0),
@@ -189,20 +233,21 @@ export async function readFinancialDocument(
   const hash = await hashFile(file);
   let text = '';
 
-  if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+  if (isPdfFile(file)) {
     onProgress?.(6, 'Verificando texto selecionável');
     text = await extractPdfText(file);
     if (text.replace(/\s/g, '').length < 80) {
       onProgress?.(8, 'PDF digitalizado detectado');
       text = await runOcr(await renderPdfPages(file), onProgress);
     }
-  } else if (file.type.startsWith('image/')) {
+  } else if (isImageFile(file)) {
+    onProgress?.(6, 'Preparando imagem');
     text = await runOcr([await imageToCanvas(file)], onProgress);
   } else {
     throw new Error('Formato não suportado. Envie PDF, JPG, JPEG, PNG ou WebP.');
   }
 
-  if (!text.trim()) throw new Error('Nenhum texto foi identificado.');
+  if (!text.trim()) throw new Error('Nenhum texto foi identificado. Tente uma imagem mais nítida.');
   onProgress?.(96, 'Interpretando dados financeiros');
   const extracted = parseFinancialDocument(text, file.name);
   onProgress?.(100, 'Documento pronto para revisão');

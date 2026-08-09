@@ -1,6 +1,14 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import { accounts, assets, budgets, cards, categories, goals, transactions } from '../data/seed';
+import {
+  accounts as demoAccounts,
+  assets as demoAssets,
+  budgets as demoBudgets,
+  cards as demoCards,
+  categories,
+  goals as demoGoals,
+  transactions as demoTransactions,
+} from '../data/seed';
 import { createId } from '../lib/ids';
 import { platformStorage } from '../lib/platform-storage';
 import type {
@@ -29,13 +37,18 @@ interface FinanceState {
   deleteTransaction: (id: string) => void;
   addAccount: (account: Omit<Account, 'id'>) => void;
   updateAccount: (id: string, patch: Partial<Account>) => void;
+  deleteAccount: (id: string) => boolean;
   addCard: (card: Omit<CreditCard, 'id'>) => void;
   updateCard: (id: string, patch: Partial<CreditCard>) => void;
   deleteCard: (id: string) => void;
+  addAsset: (asset: Omit<Asset, 'id' | 'updatedAt'>) => void;
+  updateAsset: (id: string, patch: Partial<Omit<Asset, 'id'>>) => void;
+  deleteAsset: (id: string) => void;
   addDocument: (document: Omit<DocumentRecord, 'id' | 'createdAt'>) => string;
   updateDocument: (id: string, patch: Partial<DocumentRecord>) => void;
-  approveDocument: (id: string, accountId?: string, categoryId?: string) => void;
+  approveDocument: (id: string, accountId?: string, categoryId?: string) => boolean;
   updateSettings: (patch: Partial<FinanceSettings>) => void;
+  clearFinancialData: () => void;
   resetDemo: () => void;
 }
 
@@ -51,13 +64,13 @@ const defaultSettings: FinanceSettings = {
 export const useFinanceStore = create<FinanceState>()(
   persist(
     (set, get) => ({
-      accounts,
+      accounts: [],
       categories,
-      transactions,
-      cards,
-      budgets,
-      goals,
-      assets,
+      transactions: [],
+      cards: [],
+      budgets: [],
+      goals: [],
+      assets: [],
       documents: [],
       settings: defaultSettings,
 
@@ -81,9 +94,7 @@ export const useFinanceStore = create<FinanceState>()(
       },
 
       deleteTransaction(id) {
-        set((state) => ({
-          transactions: state.transactions.filter((item) => item.id !== id),
-        }));
+        set((state) => ({ transactions: state.transactions.filter((item) => item.id !== id) }));
       },
 
       addAccount(account) {
@@ -94,14 +105,23 @@ export const useFinanceStore = create<FinanceState>()(
 
       updateAccount(id, patch) {
         set((state) => ({
-          accounts: state.accounts.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+          accounts: state.accounts.map((item) =>
+            item.id === id ? { ...item, ...patch } : item,
+          ),
         }));
       },
 
+      deleteAccount(id) {
+        const referenced = get().transactions.some(
+          (item) => item.accountId === id || item.destinationAccountId === id,
+        );
+        if (referenced) return false;
+        set((state) => ({ accounts: state.accounts.filter((item) => item.id !== id) }));
+        return true;
+      },
+
       addCard(card) {
-        set((state) => ({
-          cards: [...state.cards, { ...card, id: createId('card') }],
-        }));
+        set((state) => ({ cards: [...state.cards, { ...card, id: createId('card') }] }));
       },
 
       updateCard(id, patch) {
@@ -111,15 +131,39 @@ export const useFinanceStore = create<FinanceState>()(
       },
 
       deleteCard(id) {
+        set((state) => ({ cards: state.cards.filter((item) => item.id !== id) }));
+      },
+
+      addAsset(asset) {
         set((state) => ({
-          cards: state.cards.filter((item) => item.id !== id),
+          assets: [
+            ...state.assets,
+            { ...asset, id: createId('asset'), updatedAt: new Date().toISOString() },
+          ],
         }));
+      },
+
+      updateAsset(id, patch) {
+        set((state) => ({
+          assets: state.assets.map((item) =>
+            item.id === id
+              ? { ...item, ...patch, updatedAt: new Date().toISOString() }
+              : item,
+          ),
+        }));
+      },
+
+      deleteAsset(id) {
+        set((state) => ({ assets: state.assets.filter((item) => item.id !== id) }));
       },
 
       addDocument(document) {
         const id = createId('doc');
         set((state) => ({
-          documents: [{ ...document, id, createdAt: new Date().toISOString() }, ...state.documents],
+          documents: [
+            { ...document, id, createdAt: new Date().toISOString() },
+            ...state.documents,
+          ],
         }));
         return id;
       },
@@ -132,9 +176,20 @@ export const useFinanceStore = create<FinanceState>()(
         }));
       },
 
-      approveDocument(id, accountId = 'acc_main', categoryId = 'cat_other') {
-        const document = get().documents.find((item) => item.id === id);
-        if (!document?.extracted?.value) return;
+      approveDocument(id, accountId, categoryId) {
+        const state = get();
+        const document = state.documents.find((item) => item.id === id);
+        if (!document?.extracted?.value) return false;
+
+        const resolvedAccountId =
+          accountId && state.accounts.some((item) => item.id === accountId)
+            ? accountId
+            : state.accounts[0]?.id;
+        const resolvedCategoryId =
+          categoryId && state.categories.some((item) => item.id === categoryId)
+            ? categoryId
+            : state.categories.find((item) => item.type !== 'income')?.id;
+        if (!resolvedAccountId || !resolvedCategoryId) return false;
 
         const dueDate = document.extracted.dueDate;
         get().addTransaction({
@@ -144,32 +199,47 @@ export const useFinanceStore = create<FinanceState>()(
           amount: document.extracted.value,
           date: new Date().toISOString().slice(0, 10),
           dueDate,
-          accountId,
-          categoryId,
+          accountId: resolvedAccountId,
+          categoryId: resolvedCategoryId,
           status: dueDate ? 'pending' : 'paid',
           documentId: id,
         });
 
-        set((state) => ({
-          documents: state.documents.map((item) =>
+        set((current) => ({
+          documents: current.documents.map((item) =>
             item.id === id ? { ...item, status: 'approved' } : item,
           ),
         }));
+        return true;
       },
 
       updateSettings(patch) {
         set((state) => ({ settings: { ...state.settings, ...patch } }));
       },
 
+      clearFinancialData() {
+        set((state) => ({
+          accounts: [],
+          categories,
+          transactions: [],
+          cards: [],
+          budgets: [],
+          goals: [],
+          assets: [],
+          documents: [],
+          settings: state.settings,
+        }));
+      },
+
       resetDemo() {
         set({
-          accounts,
+          accounts: demoAccounts,
           categories,
-          transactions,
-          cards,
-          budgets,
-          goals,
-          assets,
+          transactions: demoTransactions,
+          cards: demoCards,
+          budgets: demoBudgets,
+          goals: demoGoals,
+          assets: demoAssets,
           documents: [],
           settings: defaultSettings,
         });
