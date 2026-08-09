@@ -22,7 +22,7 @@ function localSet(name: string, value: string) {
   try {
     localStorage.setItem(name, value);
   } catch {
-    // O armazenamento nativo continua sendo a fonte principal no Tauri.
+    // O armazenamento nativo continua disponível como segunda fonte.
   }
 }
 
@@ -38,12 +38,19 @@ export const platformStorage: StateStorage = {
   async getItem(name) {
     if (!isTauri()) return localGet(name);
 
+    // O espelho do WebView é consultado primeiro. Isso evita que um estado nativo
+    // antigo reapareça depois de uma restauração quando o plugin-store falhou em
+    // gravar/excluir durante uma instalação anterior.
+    const localValue = localGet(name);
+    if (localValue !== null) return localValue;
+
     try {
       const value = await (await nativeStore()).get<string>(name);
-      return value ?? localGet(name);
+      if (value != null) localSet(name, value);
+      return value ?? null;
     } catch (error) {
       console.warn('Conta Certa: armazenamento nativo indisponível; usando fallback local.', error);
-      return localGet(name);
+      return null;
     }
   },
 
