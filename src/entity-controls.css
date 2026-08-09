@@ -159,6 +159,124 @@
   line-height: 1.45;
 }
 
+.budget-editor-card {
+  margin-bottom: 14px;
+}
+
+.budget-card-editable {
+  display: grid;
+  gap: 12px;
+}
+
+.budget-actions {
+  margin: 0;
+  justify-content: flex-start;
+}
+
+.invoice-items-review {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-alt);
+}
+
+.invoice-items-heading,
+.invoice-items-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.invoice-items-heading small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.invoice-items-heading h3 {
+  margin: 2px 0 0;
+  font-size: 14px;
+}
+
+.invoice-items-list {
+  margin-top: 12px;
+  display: grid;
+  gap: 7px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.invoice-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.invoice-item-row > div {
+  min-width: 0;
+}
+
+.invoice-item-row strong,
+.invoice-item-row span {
+  display: block;
+}
+
+.invoice-item-row strong {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.invoice-item-row span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.invoice-item-row b {
+  flex: 0 0 auto;
+  font-size: 11px;
+}
+
+.invoice-items-total {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 10px;
+}
+
+.invoice-items-warning {
+  margin-top: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px;
+  border-radius: 10px;
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.invoice-items-warning strong,
+.invoice-items-warning p {
+  display: block;
+}
+
+.invoice-items-warning strong {
+  font-size: 10px;
+}
+
+.invoice-items-warning p {
+  margin: 4px 0 0;
+  color: var(--text);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
 @media (max-width: 720px) {
   .account-card,
   .asset-card {
@@ -202,6 +320,22 @@
   .pdf-password-panel .button {
     width: 100%;
     min-height: 44px;
+  }
+
+  .budget-actions {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .invoice-items-review {
+    padding: 12px;
+  }
+
+  .invoice-item-row {
+    align-items: flex-start;
+  }
+
+  .invoice-item-row b {
+    font-size: 12px;
   }
 
   .danger-actions {
