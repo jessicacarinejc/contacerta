@@ -1,4 +1,4 @@
-import { CalendarClock, Download, Plus, Search, Trash2 } from 'lucide-react';
+import { CalendarClock, Download, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
@@ -7,6 +7,7 @@ import { TransactionForm } from '../components/forms/TransactionForm';
 import { Badge, Button, Card, Modal } from '../components/ui';
 import { toCurrency } from '../lib/currency';
 import { useFinanceStore } from '../store/useFinanceStore';
+import type { Transaction } from '../types/finance';
 
 export function TransactionsPage() {
   const navigate = useNavigate();
@@ -14,7 +15,8 @@ export function TransactionsPage() {
   const accounts = useFinanceStore((state) => state.accounts);
   const categories = useFinanceStore((state) => state.categories);
   const remove = useFinanceStore((state) => state.deleteTransaction);
-  const [modal, setModal] = useState(false);
+  const [createModal, setCreateModal] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
 
@@ -41,17 +43,22 @@ export function TransactionsPage() {
       Terceiro: item.thirdParty || '',
       Conta: accounts.find((account) => account.id === item.accountId)?.name,
       Categoria: categories.find((category) => category.id === item.categoryId)?.name,
+      Origem: item.documentId ? 'Documento importado' : 'Lançamento manual',
     }));
     const book = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(rows), 'Movimentações');
     XLSX.writeFile(book, 'conta-certa-movimentacoes.xlsx');
   }
 
+  function closeEditModal() {
+    setEditingTransaction(null);
+  }
+
   return (
     <div className="page">
       <PageHeader
         title="Movimentações"
-        description="Receitas, despesas e transferências realizadas ou referentes à fatura atual. Parcelas futuras ficam em uma aba própria."
+        description="Receitas, despesas e transferências realizadas ou referentes à fatura atual. Os dados podem ser corrigidos mesmo quando vieram de documentos importados."
         action={
           <>
             <Button variant="secondary" onClick={() => navigate('/lancamentos-futuros')}>
@@ -60,7 +67,7 @@ export function TransactionsPage() {
             <Button variant="secondary" onClick={exportXlsx}>
               <Download size={17} /> Exportar
             </Button>
-            <Button onClick={() => setModal(true)}>
+            <Button onClick={() => setCreateModal(true)}>
               <Plus size={17} /> Novo lançamento
             </Button>
           </>
@@ -94,7 +101,7 @@ export function TransactionsPage() {
                 <th>Conta</th>
                 <th>Situação</th>
                 <th className="right">Valor</th>
-                <th />
+                <th>Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -104,8 +111,11 @@ export function TransactionsPage() {
                   <td>
                     <strong>{item.description}</strong>
                     {item.installment && (
-                      <small>{item.installment.current}/{item.installment.total}</small>
+                      <small>
+                        Parcela {item.installment.current}/{item.installment.total}
+                      </small>
                     )}
+                    {item.documentId && <small>Importado de documento</small>}
                   </td>
                   <td>{item.thirdParty || '—'}</td>
                   <td>{categories.find((category) => category.id === item.categoryId)?.name}</td>
@@ -117,14 +127,18 @@ export function TransactionsPage() {
                           ? 'positive'
                           : item.status === 'overdue'
                             ? 'danger'
-                            : 'warning'
+                            : item.status === 'cancelled'
+                              ? 'neutral'
+                              : 'warning'
                       }
                     >
                       {item.status === 'paid'
                         ? 'Realizado'
                         : item.status === 'pending'
                           ? 'Pendente'
-                          : 'Vencido'}
+                          : item.status === 'cancelled'
+                            ? 'Cancelado'
+                            : 'Vencido'}
                     </Badge>
                   </td>
                   <td className={`right amount ${item.type}`}>
@@ -132,13 +146,24 @@ export function TransactionsPage() {
                     {toCurrency(item.amount)}
                   </td>
                   <td>
-                    <button
-                      className="icon-button"
-                      onClick={() => remove(item.id)}
-                      aria-label="Excluir"
-                    >
-                      <Trash2 size={17} />
-                    </button>
+                    <div className="transaction-row-actions">
+                      <button
+                        className="icon-button"
+                        onClick={() => setEditingTransaction(item)}
+                        aria-label={`Editar ${item.description}`}
+                        title="Editar movimentação"
+                      >
+                        <Pencil size={17} />
+                      </button>
+                      <button
+                        className="icon-button"
+                        onClick={() => remove(item.id)}
+                        aria-label={`Excluir ${item.description}`}
+                        title="Excluir movimentação"
+                      >
+                        <Trash2 size={17} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -146,8 +171,19 @@ export function TransactionsPage() {
           </table>
         </div>
       </Card>
-      <Modal open={modal} onClose={() => setModal(false)} title="Novo lançamento">
-        <TransactionForm onDone={() => setModal(false)} />
+
+      <Modal open={createModal} onClose={() => setCreateModal(false)} title="Novo lançamento">
+        <TransactionForm onDone={() => setCreateModal(false)} />
+      </Modal>
+
+      <Modal
+        open={Boolean(editingTransaction)}
+        onClose={closeEditModal}
+        title={editingTransaction?.documentId ? 'Corrigir lançamento importado' : 'Editar lançamento'}
+      >
+        {editingTransaction && (
+          <TransactionForm transaction={editingTransaction} onDone={closeEditModal} />
+        )}
       </Modal>
     </div>
   );
