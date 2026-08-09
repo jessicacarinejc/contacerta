@@ -1,0 +1,61 @@
+.entity-card-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.entity-card-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.entity-card-actions .button {
+  padding: 7px 9px;
+  font-size: 9px;
+}
+
+.inline-check {
+  display: flex !important;
+  grid-template-columns: none !important;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px !important;
+  color: var(--text) !important;
+}
+
+.inline-check input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.form-hint {
+  margin: 0;
+  padding: 9px 10px;
+  border-radius: 9px;
+  background: var(--surface-alt);
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.danger-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (max-width: 720px) {
+  .entity-card-actions {
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-start;
+  }
+
+  .account-card,
+  .asset-card {
+    flex-wrap: wrap;
+  }
+}
