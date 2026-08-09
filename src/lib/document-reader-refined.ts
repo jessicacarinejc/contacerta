@@ -24,7 +24,10 @@ function isSafeExpenseItem(item: ExtractedDocumentItem) {
   return true;
 }
 
-function finalize(result: DocumentReadResult, fileName: string): DocumentReadResult {
+export function finalizeFinancialResult(
+  result: DocumentReadResult,
+  fileName: string,
+): DocumentReadResult {
   const refined = refineInvoiceExtraction(result.text, fileName, result.extracted);
 
   if (refined.documentType !== 'invoice') {
@@ -58,14 +61,14 @@ export async function readFinancialDocumentRefined(
   onProgress?: (progress: number, message: string) => void,
   password?: string,
 ) {
-  return finalize(await readFinancialDocument(file, onProgress, password), file.name);
+  return finalizeFinancialResult(await readFinancialDocument(file, onProgress, password), file.name);
 }
 
 export async function readFinancialImageRefined(
   file: File,
   onProgress?: (progress: number, message: string) => void,
 ) {
-  return finalize(await readFinancialImage(file, onProgress), file.name);
+  return finalizeFinancialResult(await readFinancialImage(file, onProgress), file.name);
 }
 
 export { PdfPasswordError };
