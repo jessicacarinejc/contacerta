@@ -138,16 +138,12 @@ jobs:
           retention-days: 14
 
   android:
-    name: Android signed packages v${{ needs.prepare.outputs.version }}
+    name: Android APK v${{ needs.prepare.outputs.version }}
     needs: prepare
     runs-on: ubuntu-22.04
     env:
       NDK_VERSION: 27.2.12479018
       BUILD_TOOLS_VERSION: 35.0.0
-      ANDROID_KEY_BASE64: ${{ secrets.ANDROID_KEY_BASE64 }}
-      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-      ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -169,7 +165,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,armv7-linux-androideabi
+          targets: aarch64-linux-android
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -188,50 +184,56 @@ jobs:
       - name: Initialize Android project
         run: npm run android:init
 
-      - name: Configure production Android signing
-        run: node scripts/prepare-android-signing.mjs --required
-
-      - name: Build optimized ARM64 APK
+      - name: Build optimized unsigned ARM64 release APK
         run: npm run android:build:apk
 
-      - name: Build Play Store AAB
-        run: npm run android:build:aab
-
-      - name: Validate, size-gate and rename Android packages
+      - name: Apply temporary CI signature, validate and rename Android APK
         shell: bash
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -euo pipefail
 
-          APK="$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' ! -name '*unsigned*' | head -n 1)"
-          AAB="$(find src-tauri/gen/android/app/build/outputs/bundle -type f -name '*.aab' | head -n 1)"
+          UNSIGNED="$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*unsigned*.apk' | head -n 1)"
+          test -n "$UNSIGNED" || { echo "APK release unsigned não encontrado. A publicação foi bloqueada."; exit 1; }
 
-          test -n "$APK" || { echo "APK de release assinado não encontrado. A publicação foi bloqueada."; exit 1; }
-          test -n "$AAB" || { echo "AAB de release não encontrado. A publicação foi bloqueada."; exit 1; }
+          KEYSTORE="$RUNNER_TEMP/conta-certa-ci.jks"
+          PASSWORD="conta-certa-ci-build"
+          ALIGNED="$RUNNER_TEMP/conta-certa-aligned.apk"
+          FINAL="dist-android/Conta-Certa-v${VERSION}-arm64.apk"
 
-          "${ANDROID_HOME}/build-tools/${BUILD_TOOLS_VERSION}/apksigner" verify --verbose --print-certs "$APK"
-          jarsigner -verify -strict "$AAB"
-
-          APK_BYTES="$(stat -c%s "$APK")"
-          AAB_BYTES="$(stat -c%s "$AAB")"
-          APK_MAX=$((80 * 1024 * 1024))
-          AAB_MAX=$((100 * 1024 * 1024))
-
-          echo "APK ARM64: $((APK_BYTES / 1024 / 1024)) MB"
-          echo "AAB: $((AAB_BYTES / 1024 / 1024)) MB"
-
-          test "$APK_BYTES" -le "$APK_MAX" || { echo "APK excede 80 MB; release bloqueada para evitar pacote anormal."; exit 1; }
-          test "$AAB_BYTES" -le "$AAB_MAX" || { echo "AAB excede 100 MB; release bloqueada para evitar pacote anormal."; exit 1; }
+          keytool -genkeypair -noprompt \
+            -keystore "$KEYSTORE" \
+            -storepass "$PASSWORD" \
+            -keypass "$PASSWORD" \
+            -alias contacerta-ci \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 3650 \
+            -dname "CN=Conta Certa CI, OU=Direct Distribution, O=Conta Certa, L=Santo Antonio de Jesus, ST=BA, C=BR"
 
           mkdir -p dist-android
-          cp "$APK" "dist-android/Conta-Certa-v${VERSION}-arm64.apk"
-          cp "$AAB" "dist-android/Conta-Certa-v${VERSION}.aab"
+          "${ANDROID_HOME}/build-tools/${BUILD_TOOLS_VERSION}/zipalign" -p -f 4 "$UNSIGNED" "$ALIGNED"
+          "${ANDROID_HOME}/build-tools/${BUILD_TOOLS_VERSION}/apksigner" sign \
+            --ks "$KEYSTORE" \
+            --ks-key-alias contacerta-ci \
+            --ks-pass pass:"$PASSWORD" \
+            --key-pass pass:"$PASSWORD" \
+            --out "$FINAL" \
+            "$ALIGNED"
+
+          "${ANDROID_HOME}/build-tools/${BUILD_TOOLS_VERSION}/apksigner" verify --verbose --print-certs "$FINAL"
+
+          APK_BYTES="$(stat -c%s "$FINAL")"
+          APK_MAX=$((80 * 1024 * 1024))
+
+          echo "APK ARM64 otimizado: $((APK_BYTES / 1024 / 1024)) MB"
+          test "$APK_BYTES" -le "$APK_MAX" || { echo "APK excede 80 MB; release bloqueada para evitar pacote anormal."; exit 1; }
 
       - uses: actions/upload-artifact@v4
         with:
           name: release-android-v${{ needs.prepare.outputs.version }}
-          path: dist-android/*
+          path: dist-android/Conta-Certa-v${{ needs.prepare.outputs.version }}-arm64.apk
           if-no-files-found: error
           retention-days: 14
 
@@ -268,8 +270,7 @@ jobs:
               -name '*.exe' -o \
               -name '*.dmg' -o \
               -name '*.app.tar.gz' -o \
-              -name '*.apk' -o \
-              -name '*.aab' \
+              -name '*.apk' \
             \) -print | sort
           )
 

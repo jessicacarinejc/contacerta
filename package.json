@@ -23,8 +23,6 @@
     "android:init": "node scripts/ensure-android.mjs",
     "android:dev": "npm run android:init && npm run icons && tauri android dev",
     "android:build:apk": "npm run android:init && npm run icons && tauri android build --target aarch64 --apk",
-    "android:build:aab": "npm run android:init && npm run icons && tauri android build --target aarch64 armv7 --aab",
-    "android:signing": "node scripts/prepare-android-signing.mjs",
     "release:sync": "node scripts/sync-version.mjs"
   },
   "dependencies": {

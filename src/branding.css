@@ -45,6 +45,10 @@
   object-position: center;
 }
 
+.auth-visual > img {
+  filter: none;
+}
+
 .nav-link.active {
   background: linear-gradient(90deg, #238b43, var(--brand-green));
   box-shadow: 0 10px 20px rgba(39, 155, 72, 0.24);
