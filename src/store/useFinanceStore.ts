@@ -10,6 +10,7 @@ import {
   transactions as demoTransactions,
 } from '../data/seed';
 import { createId } from '../lib/ids';
+import { buildFutureInstallments } from '../lib/installments';
 import { platformStorage } from '../lib/platform-storage';
 import type {
   Account,
@@ -52,7 +53,12 @@ interface FinanceState {
   deleteAsset: (id: string) => void;
   addDocument: (document: Omit<DocumentRecord, 'id' | 'createdAt'>) => string;
   updateDocument: (id: string, patch: Partial<DocumentRecord>) => void;
-  approveDocument: (id: string, accountId?: string, categoryId?: string) => boolean;
+  approveDocument: (
+    id: string,
+    accountId?: string,
+    categoryId?: string,
+    thirdParty?: string,
+  ) => boolean;
   updateSettings: (patch: Partial<FinanceSettings>) => void;
   clearFinancialData: () => void;
   resetDemo: () => void;
@@ -210,10 +216,10 @@ export const useFinanceStore = create<FinanceState>()(
         }));
       },
 
-      approveDocument(id, accountId, categoryId) {
+      approveDocument(id, accountId, categoryId, thirdParty) {
         const state = get();
         const document = state.documents.find((item) => item.id === id);
-        if (!document?.extracted) return false;
+        if (!document?.extracted || document.status === 'approved') return false;
 
         const resolvedAccountId =
           accountId && state.accounts.some((item) => item.id === accountId)
@@ -231,10 +237,10 @@ export const useFinanceStore = create<FinanceState>()(
           extracted.documentType === 'invoice'
             ? (extracted.items || []).filter((item) => item.amount > 0 && item.description.trim())
             : [];
+        const normalizedThirdParty = thirdParty?.trim() || undefined;
 
         if (extracted.documentType === 'invoice' && invoiceItems.length === 0) {
-          // Segurança: nunca transforma o total de uma fatura em despesa se as compras individuais
-          // não puderam ser identificadas. Isso evita duplicidade e lançamentos absurdos.
+          // Segurança: uma fatura nunca vira um único lançamento pelo total.
           return false;
         }
 
@@ -250,9 +256,33 @@ export const useFinanceStore = create<FinanceState>()(
               categoryId: resolvedCategoryId,
               status: dueDate ? 'pending' : 'paid',
               installment: item.installment,
-              notes: `Item importado da fatura ${document.name}. O valor total da fatura não foi lançado como nova despesa.`,
+              thirdParty: normalizedThirdParty,
+              notes: `Despesa importada da fatura ${document.name}. Pagamentos, créditos, saldos e limites foram ignorados.`,
               documentId: id,
             });
+
+            const futureDrafts = buildFutureInstallments(
+              item,
+              dueDate,
+              extracted.futureItems || [],
+            );
+            for (const future of futureDrafts) {
+              get().addTransaction({
+                description: future.description,
+                type: 'expense',
+                amount: future.amount,
+                date: future.dueDate,
+                dueDate: future.dueDate,
+                accountId: resolvedAccountId,
+                categoryId: resolvedCategoryId,
+                status: 'pending',
+                installment: future.installment,
+                thirdParty: normalizedThirdParty,
+                futureInstallment: true,
+                notes: `Parcela futura projetada a partir da fatura ${document.name}.`,
+                documentId: id,
+              });
+            }
           }
         } else {
           if (!extracted.value) return false;
@@ -265,6 +295,7 @@ export const useFinanceStore = create<FinanceState>()(
             accountId: resolvedAccountId,
             categoryId: resolvedCategoryId,
             status: dueDate ? 'pending' : 'paid',
+            thirdParty: normalizedThirdParty,
             documentId: id,
           });
         }
