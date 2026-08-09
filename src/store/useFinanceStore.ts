@@ -64,8 +64,6 @@ const defaultSettings: FinanceSettings = {
 export const useFinanceStore = create<FinanceState>()(
   persist(
     (set, get) => ({
-      // A instalação nova começa limpa. Os dados de demonstração continuam
-      // disponíveis em Configurações para quem quiser conhecê-los.
       accounts: [],
       categories,
       transactions: [],
@@ -96,9 +94,7 @@ export const useFinanceStore = create<FinanceState>()(
       },
 
       deleteTransaction(id) {
-        set((state) => ({
-          transactions: state.transactions.filter((item) => item.id !== id),
-        }));
+        set((state) => ({ transactions: state.transactions.filter((item) => item.id !== id) }));
       },
 
       addAccount(account) {
@@ -125,9 +121,7 @@ export const useFinanceStore = create<FinanceState>()(
       },
 
       addCard(card) {
-        set((state) => ({
-          cards: [...state.cards, { ...card, id: createId('card') }],
-        }));
+        set((state) => ({ cards: [...state.cards, { ...card, id: createId('card') }] }));
       },
 
       updateCard(id, patch) {
@@ -137,9 +131,7 @@ export const useFinanceStore = create<FinanceState>()(
       },
 
       deleteCard(id) {
-        set((state) => ({
-          cards: state.cards.filter((item) => item.id !== id),
-        }));
+        set((state) => ({ cards: state.cards.filter((item) => item.id !== id) }));
       },
 
       addAsset(asset) {
@@ -197,7 +189,6 @@ export const useFinanceStore = create<FinanceState>()(
           categoryId && state.categories.some((item) => item.id === categoryId)
             ? categoryId
             : state.categories.find((item) => item.type !== 'income')?.id;
-
         if (!resolvedAccountId || !resolvedCategoryId) return false;
 
         const dueDate = document.extracted.dueDate;
@@ -257,7 +248,7 @@ export const useFinanceStore = create<FinanceState>()(
     {
       name: 'conta-certa-finance-state',
       storage: createJSONStorage(() => platformStorage),
-      version: 2,
+      version: 1,
     },
   ),
 );
