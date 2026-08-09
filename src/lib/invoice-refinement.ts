@@ -1,7 +1,7 @@
 import type { ExtractedDocumentData, ExtractedDocumentItem } from '../types/finance';
 
 const moneyPattern = /(?:R\s*\$\s*)?(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})(-)?/gi;
-const installmentPattern = /\b(?:parc(?:ela)?\s*)?(\d{1,2})\s*(?:de|\/)\s*(\d{1,2})\b/i;
+const installmentPattern = /\bparc(?:ela)?\s*(\d{1,2})\s*(?:de|\/)\s*(\d{1,2})\b/i;
 const datePattern = /\b(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?\b/;
 
 const paymentOrCreditPattern =
@@ -135,16 +135,12 @@ function merge(primary: ExtractedDocumentItem[], fallback: ExtractedDocumentItem
   const output = [...primary];
   for (const item of fallback) {
     const normalized = normalizeInvoiceDescription(item.description);
-    const duplicate = output.some((existing) => {
-      const sameDescription = normalizeInvoiceDescription(existing.description) === normalized;
-      const sameAmount = Math.abs(existing.amount - item.amount) < 0.01;
-      const sameInstallment =
-        !existing.installment ||
-        !item.installment ||
-        (existing.installment.current === item.installment.current &&
-          existing.installment.total === item.installment.total);
-      return sameDescription && sameAmount && sameInstallment;
-    });
+    const duplicate = output.some(
+      (existing) =>
+        normalizeInvoiceDescription(existing.description) === normalized &&
+        Math.abs(existing.amount - item.amount) < 0.01 &&
+        (!existing.date || !item.date || existing.date === item.date),
+    );
     if (!duplicate) output.push(item);
   }
   return deduplicate(output);
