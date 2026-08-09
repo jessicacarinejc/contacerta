@@ -54,7 +54,7 @@ function Logo() {
   return (
     <div className="brand">
       <div className="brand-lockup">
-        <img src="/branding/logo-full.svg" alt="Conta Certa — Gestão Financeira" />
+        <img src="/branding/logo-horizontal.svg" alt="Conta Certa — Gestão Financeira" />
       </div>
     </div>
   );
