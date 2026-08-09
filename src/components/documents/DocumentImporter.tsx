@@ -71,6 +71,8 @@ export function DocumentImporter() {
   const [retryingPassword, setRetryingPassword] = useState(false);
 
   const selected = documents.find((item) => item.id === selectedId) || documents[0];
+  const isInvoice = selected?.extracted?.documentType === 'invoice';
+  const invoiceItems = isInvoice ? selected?.extracted?.items || [] : [];
 
   async function processFile(file: File, password?: string, existingId?: string) {
     if (file.size > maxFileSizeBytes) {
@@ -120,8 +122,13 @@ export function DocumentImporter() {
 
       setPasswordRequest(null);
       setPdfPassword('');
+      const itemCount = result.extracted.items?.length || 0;
       setMessage(
-        duplicate ? 'Documento possivelmente duplicado.' : 'Documento pronto para revisão.',
+        duplicate
+          ? 'Documento possivelmente duplicado.'
+          : result.extracted.documentType === 'invoice' && itemCount > 0
+            ? `Fatura pronta para revisão: ${itemCount} compra(s) individual(is) detectada(s).`
+            : 'Documento pronto para revisão.',
       );
       return true;
     } catch (error) {
@@ -324,7 +331,7 @@ export function DocumentImporter() {
                 <strong>{selected.extracted?.documentType || 'Não identificado'}</strong>
               </label>
               <label>
-                Valor
+                {isInvoice ? 'Total da fatura (referência)' : 'Valor'}
                 <strong>
                   {selected.extracted?.value ? toCurrency(selected.extracted.value) : 'Revisar'}
                 </strong>
@@ -345,13 +352,67 @@ export function DocumentImporter() {
                 Descrição
                 <strong>{selected.extracted?.description || selected.name}</strong>
               </label>
-              {selected.extracted?.barcode && (
+              {selected.extracted?.barcode && !isInvoice && (
                 <label className="span-2">
                   Linha digitável
                   <strong className="monospace">{selected.extracted.barcode}</strong>
                 </label>
               )}
             </div>
+
+            {isInvoice && (
+              <section className="invoice-items-review">
+                <div className="invoice-items-heading">
+                  <div>
+                    <small>Importação de fatura</small>
+                    <h3>Compras individuais detectadas</h3>
+                  </div>
+                  <Badge tone={invoiceItems.length ? 'positive' : 'danger'}>
+                    {invoiceItems.length} item(ns)
+                  </Badge>
+                </div>
+
+                {invoiceItems.length === 0 ? (
+                  <div className="invoice-items-warning">
+                    <AlertDocument />
+                    <div>
+                      <strong>Nenhuma compra individual foi identificada com segurança.</strong>
+                      <p>
+                        Por proteção, o Conta Certa não lançará o valor total da fatura como uma única despesa.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="invoice-items-list">
+                      {invoiceItems.map((item, index) => (
+                        <div className="invoice-item-row" key={`${item.description}-${item.amount}-${index}`}>
+                          <div>
+                            <strong>{item.description}</strong>
+                            <span>
+                              {item.date
+                                ? new Date(`${item.date}T12:00:00`).toLocaleDateString('pt-BR')
+                                : 'Data não identificada'}
+                              {item.installment
+                                ? ` · Parcela ${item.installment.current}/${item.installment.total}`
+                                : ''}
+                            </span>
+                          </div>
+                          <b>{toCurrency(item.amount)}</b>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="invoice-items-total">
+                      <span>Soma dos itens reconhecidos</span>
+                      <strong>{toCurrency(selected.extracted?.itemsTotal || 0)}</strong>
+                    </div>
+                    <p className="form-hint">
+                      Cada item será criado como uma despesa separada. O total da fatura fica apenas como referência e não é lançado novamente.
+                    </p>
+                  </>
+                )}
+              </section>
+            )}
 
             <details className="raw-text">
               <summary>Texto reconhecido</summary>
@@ -389,7 +450,8 @@ export function DocumentImporter() {
               <Button
                 disabled={
                   accounts.length === 0 ||
-                  !selected.extracted?.value ||
+                  (!selected.extracted?.value && !invoiceItems.length) ||
+                  (isInvoice && invoiceItems.length === 0) ||
                   selected.status === 'approved'
                 }
                 onClick={() => {
@@ -399,11 +461,23 @@ export function DocumentImporter() {
                     (document.getElementById('doc-category') as HTMLSelectElement)?.value,
                   );
                   if (!approved) {
-                    setMessage('Não foi possível confirmar. Verifique a conta e a categoria.');
+                    setMessage(
+                      isInvoice
+                        ? 'A fatura não foi lançada. É necessário identificar compras individuais antes da confirmação.'
+                        : 'Não foi possível confirmar. Verifique a conta e a categoria.',
+                    );
+                  } else if (isInvoice) {
+                    setMessage(`${invoiceItems.length} despesa(s) individual(is) criada(s) a partir da fatura.`);
+                  } else {
+                    setMessage('Lançamento confirmado.');
                   }
                 }}
               >
-                {selected.status === 'approved' ? 'Lançamento confirmado' : 'Confirmar lançamento'}
+                {selected.status === 'approved'
+                  ? 'Lançamento confirmado'
+                  : isInvoice && invoiceItems.length
+                    ? `Confirmar ${invoiceItems.length} lançamentos`
+                    : 'Confirmar lançamento'}
               </Button>
             </div>
           </>
@@ -415,4 +489,8 @@ export function DocumentImporter() {
 
 function LandmarkMessage() {
   return <FileText size={18} />;
+}
+
+function AlertDocument() {
+  return <XCircle size={20} />;
 }
