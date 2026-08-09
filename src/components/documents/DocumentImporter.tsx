@@ -1,21 +1,58 @@
-import { useRef, useState, type ChangeEvent, type DragEvent } from 'react';
+import { useRef, useState, type ChangeEvent, type DragEvent, type FormEvent } from 'react';
 import {
   CheckCircle2,
   FileImage,
   FileText,
   LoaderCircle,
+  LockKeyhole,
   ScanLine,
   UploadCloud,
   XCircle,
 } from 'lucide-react';
-import { readFinancialDocument } from '../../lib/document-reader';
+import { PdfPasswordError, readFinancialDocument } from '../../lib/document-reader';
 import { toCurrency } from '../../lib/currency';
 import { useFinanceStore } from '../../store/useFinanceStore';
 import { Badge, Button, Card, EmptyState, Progress } from '../ui';
 
-const accepted = '.pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp';
-const maxFileSizeMb = Number(import.meta.env.VITE_MAX_DOCUMENT_MB || 100);
+const accepted = [
+  '.pdf',
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.webp',
+  '.bmp',
+  '.txt',
+  '.csv',
+  '.ofx',
+  '.qfx',
+  '.ofc',
+  '.xml',
+  '.json',
+  '.ret',
+  '.rem',
+  '.xls',
+  '.xlsx',
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/bmp',
+  'text/plain',
+  'text/csv',
+  'application/json',
+  'application/xml',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+].join(',');
+
+const maxFileSizeMb = Number(import.meta.env.VITE_MAX_DOCUMENT_MB || 200);
 const maxFileSizeBytes = maxFileSizeMb * 1024 * 1024;
+
+interface PasswordRequest {
+  file: File;
+  documentId: string;
+  incorrect: boolean;
+}
 
 export function DocumentImporter() {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -29,52 +66,88 @@ export function DocumentImporter() {
   const [dragging, setDragging] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(documents[0]?.id || null);
   const [message, setMessage] = useState('');
+  const [passwordRequest, setPasswordRequest] = useState<PasswordRequest | null>(null);
+  const [pdfPassword, setPdfPassword] = useState('');
+  const [retryingPassword, setRetryingPassword] = useState(false);
 
   const selected = documents.find((item) => item.id === selectedId) || documents[0];
 
-  async function processFile(file: File) {
+  async function processFile(file: File, password?: string, existingId?: string) {
     if (file.size > maxFileSizeBytes) {
       setMessage(`O arquivo excede ${maxFileSizeMb} MB.`);
-      return;
+      return false;
     }
 
-    const id = addDocument({
-      name: file.name,
-      mimeType: file.type || 'application/octet-stream',
-      size: file.size,
-      hash: '',
-      status: 'processing',
-      progress: 1,
-    });
+    const id =
+      existingId ||
+      addDocument({
+        name: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        size: file.size,
+        hash: '',
+        status: 'processing',
+        progress: 1,
+      });
+
+    if (existingId) {
+      updateDocument(id, { status: 'processing', progress: 1, error: undefined });
+    }
+
     setSelectedId(id);
 
     try {
-      const result = await readFinancialDocument(file, (progress, current) => {
-        updateDocument(id, { progress });
-        setMessage(current);
-      });
+      const result = await readFinancialDocument(
+        file,
+        (progress, current) => {
+          updateDocument(id, { progress });
+          setMessage(current);
+        },
+        password,
+      );
+
       const duplicate = useFinanceStore
         .getState()
         .documents.find((item) => item.id !== id && item.hash === result.hash);
+
       updateDocument(id, {
         hash: result.hash,
         rawText: result.text,
         extracted: result.extracted,
         progress: 100,
         status: duplicate ? 'duplicate' : 'review',
+        error: undefined,
       });
+
+      setPasswordRequest(null);
+      setPdfPassword('');
       setMessage(
         duplicate ? 'Documento possivelmente duplicado.' : 'Documento pronto para revisão.',
       );
+      return true;
     } catch (error) {
+      if (error instanceof PdfPasswordError) {
+        const passwordMessage =
+          error.reason === 'incorrect'
+            ? 'Senha incorreta. Confira a senha do PDF e tente novamente.'
+            : 'PDF protegido por senha. Informe a senha para continuar a leitura.';
+
+        updateDocument(id, { status: 'error', progress: 100, error: passwordMessage });
+        setPasswordRequest({ file, documentId: id, incorrect: error.reason === 'incorrect' });
+        setMessage(passwordMessage);
+        return false;
+      }
+
       const errorMessage = error instanceof Error ? error.message : 'Falha ao processar.';
       updateDocument(id, { status: 'error', progress: 100, error: errorMessage });
       setMessage(errorMessage);
+      return false;
     }
   }
 
   function onFiles(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
+    setPasswordRequest(null);
+    setPdfPassword('');
     if (file) void processFile(file);
     event.target.value = '';
   }
@@ -82,8 +155,22 @@ export function DocumentImporter() {
   function onDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
     setDragging(false);
+    setPasswordRequest(null);
+    setPdfPassword('');
     const file = event.dataTransfer.files?.[0];
     if (file) void processFile(file);
+  }
+
+  async function submitPassword(event: FormEvent) {
+    event.preventDefault();
+    if (!passwordRequest || !pdfPassword) return;
+
+    setRetryingPassword(true);
+    try {
+      await processFile(passwordRequest.file, pdfPassword, passwordRequest.documentId);
+    } finally {
+      setRetryingPassword(false);
+    }
   }
 
   return (
@@ -101,9 +188,13 @@ export function DocumentImporter() {
         >
           <UploadCloud size={42} />
           <h3>Envie um documento financeiro</h3>
-          <p>PDF com texto, PDF digitalizado, foto de boleto, extrato, fatura ou comprovante.</p>
+          <p>
+            Faturas, extratos, boletos, comprovantes, imagens, OFX/CSV e planilhas financeiras.
+          </p>
           <Button type="button">Selecionar arquivo</Button>
-          <small>PDF, JPG, JPEG, PNG ou WebP • até {maxFileSizeMb} MB</small>
+          <small>
+            PDF, imagens, TXT, CSV, OFX/QFX/OFC, XML, JSON, XLS/XLSX • até {maxFileSizeMb} MB
+          </small>
           <input ref={inputRef} hidden type="file" accept={accepted} onChange={onFiles} />
         </div>
 
@@ -112,6 +203,37 @@ export function DocumentImporter() {
             <ScanLine size={18} />
             {message}
           </div>
+        )}
+
+        {passwordRequest && (
+          <form className="pdf-password-panel" onSubmit={submitPassword}>
+            <div className="pdf-password-title">
+              <LockKeyhole size={19} />
+              <div>
+                <strong>PDF protegido por senha</strong>
+                <span>
+                  {passwordRequest.incorrect
+                    ? 'A senha anterior não abriu o arquivo.'
+                    : 'Algumas faturas bancárias são entregues com proteção por senha.'}
+                </span>
+              </div>
+            </div>
+            <label>
+              Senha do PDF
+              <input
+                type="password"
+                value={pdfPassword}
+                onChange={(event) => setPdfPassword(event.target.value)}
+                autoComplete="off"
+                placeholder="Digite a senha usada para abrir a fatura"
+                autoFocus
+              />
+            </label>
+            <small>A senha é usada somente nesta leitura e não é salva no Conta Certa.</small>
+            <Button type="submit" disabled={!pdfPassword || retryingPassword}>
+              {retryingPassword ? 'Abrindo PDF...' : 'Ler PDF protegido'}
+            </Button>
+          </form>
         )}
 
         <div className="document-history">
@@ -130,7 +252,7 @@ export function DocumentImporter() {
                 onClick={() => setSelectedId(item.id)}
               >
                 <span className="document-file-icon">
-                  {item.mimeType.includes('pdf') ? <FileText /> : <FileImage />}
+                  {item.mimeType.startsWith('image/') ? <FileImage /> : <FileText />}
                 </span>
                 <span>
                   <strong>{item.name}</strong>
@@ -244,7 +366,11 @@ export function DocumentImporter() {
             )}
 
             <div className="review-actions">
-              <select id="doc-account" defaultValue={accounts[0]?.id} disabled={accounts.length === 0}>
+              <select
+                id="doc-account"
+                defaultValue={accounts[0]?.id}
+                disabled={accounts.length === 0}
+              >
                 {accounts.map((account) => (
                   <option key={account.id} value={account.id}>
                     {account.name}
@@ -262,7 +388,9 @@ export function DocumentImporter() {
               </select>
               <Button
                 disabled={
-                  accounts.length === 0 || !selected.extracted?.value || selected.status === 'approved'
+                  accounts.length === 0 ||
+                  !selected.extracted?.value ||
+                  selected.status === 'approved'
                 }
                 onClick={() => {
                   const approved = approveDocument(
@@ -270,7 +398,9 @@ export function DocumentImporter() {
                     (document.getElementById('doc-account') as HTMLSelectElement)?.value,
                     (document.getElementById('doc-category') as HTMLSelectElement)?.value,
                   );
-                  if (!approved) setMessage('Não foi possível confirmar. Verifique a conta e a categoria.');
+                  if (!approved) {
+                    setMessage('Não foi possível confirmar. Verifique a conta e a categoria.');
+                  }
                 }}
               >
                 {selected.status === 'approved' ? 'Lançamento confirmado' : 'Confirmar lançamento'}
