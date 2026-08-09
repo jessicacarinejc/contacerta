@@ -64,9 +64,40 @@ describe('leitura estrita de fatura', () => {
     expect(result.itemsTotal).toBeCloseTo(768.8, 2);
     expect(result.value).toBeCloseTo(768.8, 2);
     expect(result.items?.some((item) => /pgto|cash/i.test(item.description))).toBe(false);
+    expect(result.items?.some((item) => /^valor$/i.test(item.description))).toBe(false);
     expect(result.items?.some((item) => item.amount === 1059.75)).toBe(false);
     expect(result.items?.some((item) => item.amount === 21830)).toBe(false);
     expect(result.futureItems).toHaveLength(5);
+
+    const moda = result.items?.find((item) => /L\.R\. MODA LTD/i.test(item.description));
+    expect(moda?.date).toBe('2026-06-30');
+    expect(moda?.installment).toEqual({ current: 1, total: 5 });
+
+    const modaNext = result.futureItems?.find((item) => /L\.R\. MODA LTD/i.test(item.description));
+    expect(modaNext?.installment).toEqual({ current: 2, total: 5 });
+    expect(modaNext?.amount).toBeCloseTo(57.59, 2);
+  });
+
+  it('prefere a leitura refinada quando a leitura base confunde data com parcela', () => {
+    const base: ExtractedDocumentData = {
+      documentType: 'invoice',
+      dueDate: '2026-08-06',
+      confidence: 0.7,
+      items: [
+        {
+          description: 'L.R. MODA LTD SANTO ANTONI',
+          amount: 57.63,
+          date: '2026-06-30',
+          installment: { current: 30, total: 6 },
+          sourceLine: '30/06 L.R. MODA LTD PARC 01/05 SANTO ANTONI BR R$ 57,63',
+        },
+      ],
+    };
+
+    const result = refineInvoiceExtraction(petrobrasText, 'PETROBRAS.pdf', base);
+    const modaItems = result.items?.filter((item) => /L\.R\. MODA LTD/i.test(item.description));
+    expect(modaItems).toHaveLength(1);
+    expect(modaItems?.[0].installment).toEqual({ current: 1, total: 5 });
   });
 
   it('projeta todas as parcelas restantes e usa o valor explícito da próxima parcela', () => {
