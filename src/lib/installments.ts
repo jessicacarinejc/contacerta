@@ -18,16 +18,23 @@ function addMonths(dateIso: string, months: number) {
   return `${target.getUTCFullYear()}-${String(target.getUTCMonth() + 1).padStart(2, '0')}-${String(safeDay).padStart(2, '0')}`;
 }
 
+function comparableDescription(value: string) {
+  return normalizeInvoiceDescription(value)
+    .replace(/\bsanto\s+antoni\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function findExplicitFuture(
   current: ExtractedDocumentItem,
   installmentNumber: number,
   futureItems: ExtractedDocumentItem[],
 ) {
-  const currentDescription = normalizeInvoiceDescription(current.description);
+  const currentDescription = comparableDescription(current.description);
   return futureItems.find((candidate) => {
     if (!candidate.installment || candidate.installment.current !== installmentNumber) return false;
     if (candidate.installment.total !== current.installment?.total) return false;
-    return normalizeInvoiceDescription(candidate.description) === currentDescription;
+    return comparableDescription(candidate.description) === currentDescription;
   });
 }
 
