@@ -1,4 +1,12 @@
-import { Bell, DatabaseBackup, Eraser, RotateCcw, ShieldCheck } from 'lucide-react';
+import {
+  Bell,
+  DatabaseBackup,
+  Eraser,
+  RefreshCcw,
+  RotateCcw,
+  ShieldCheck,
+} from 'lucide-react';
+import { useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { Button, Card } from '../components/ui';
 import { useFinanceStore } from '../store/useFinanceStore';
@@ -8,6 +16,31 @@ export function SettingsPage() {
   const update = useFinanceStore((state) => state.updateSettings);
   const clearFinancialData = useFinanceStore((state) => state.clearFinancialData);
   const resetDemo = useFinanceStore((state) => state.resetDemo);
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function hardResetApplication() {
+    if (
+      !confirm(
+        'Restaurar o Conta Certa para uma base vazia? Todos os dados financeiros locais serão removidos. O aplicativo será recarregado.',
+      )
+    ) {
+      return;
+    }
+
+    setBusy(true);
+    setMessage('Limpando o armazenamento local...');
+    try {
+      await useFinanceStore.persist.clearStorage();
+      clearFinancialData();
+      setMessage('Base restaurada. Recarregando o aplicativo...');
+      window.setTimeout(() => window.location.reload(), 250);
+    } catch (error) {
+      console.error('Falha ao restaurar a base financeira.', error);
+      setMessage('Não foi possível restaurar a base. Tente novamente.');
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="page">
@@ -20,13 +53,18 @@ export function SettingsPage() {
           <h2>Perfil</h2>
           <label>
             Nome de exibição
-            <input value={settings.userName} onChange={(event) => update({ userName: event.target.value })} />
+            <input
+              value={settings.userName}
+              onChange={(event) => update({ userName: event.target.value })}
+            />
           </label>
           <label>
             Tema
             <select
               value={settings.theme}
-              onChange={(event) => update({ theme: event.target.value as typeof settings.theme })}
+              onChange={(event) =>
+                update({ theme: event.target.value as typeof settings.theme })
+              }
             >
               <option value="system">Seguir o sistema</option>
               <option value="light">Claro</option>
@@ -52,7 +90,9 @@ export function SettingsPage() {
               min="1"
               max="24"
               value={settings.emergencyReserveMonths}
-              onChange={(event) => update({ emergencyReserveMonths: Number(event.target.value) })}
+              onChange={(event) =>
+                update({ emergencyReserveMonths: Number(event.target.value) })
+              }
             />
           </label>
         </Card>
@@ -90,28 +130,42 @@ export function SettingsPage() {
         <Card className="danger-zone">
           <h2>Base financeira</h2>
           <p>
-            Use “Começar do zero” para remover contas, lançamentos, cartões, patrimônio,
-            metas, orçamentos e documentos de demonstração. Suas preferências são mantidas.
+            Se a demonstração antiga continuar aparecendo, use “Restaurar base vazia”. Essa
+            opção apaga também o estado persistido do aplicativo e recarrega o Conta Certa.
           </p>
+
+          {message && <div className="settings-message">{message}</div>}
+
           <div className="danger-actions">
+            <Button variant="danger" disabled={busy} onClick={() => void hardResetApplication()}>
+              <RefreshCcw size={17} /> {busy ? 'Restaurando...' : 'Restaurar base vazia'}
+            </Button>
+
             <Button
-              variant="danger"
+              variant="secondary"
+              disabled={busy}
               onClick={() => {
                 if (
                   confirm(
-                    'Começar do zero? Todos os dados financeiros atuais serão apagados deste dispositivo.',
+                    'Limpar contas, lançamentos, cartões, patrimônio, metas, orçamentos e documentos atuais?',
                   )
                 ) {
                   clearFinancialData();
+                  setMessage('Dados financeiros removidos. A base está pronta para novos lançamentos.');
                 }
               }}
             >
-              <Eraser size={17} /> Começar do zero
+              <Eraser size={17} /> Limpar dados financeiros
             </Button>
+
             <Button
               variant="secondary"
+              disabled={busy}
               onClick={() => {
-                if (confirm('Carregar novamente os dados de demonstração?')) resetDemo();
+                if (confirm('Carregar novamente os dados de demonstração?')) {
+                  resetDemo();
+                  setMessage('Dados de demonstração carregados.');
+                }
               }}
             >
               <RotateCcw size={17} /> Carregar demonstração
