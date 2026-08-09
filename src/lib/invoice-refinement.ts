@@ -8,7 +8,7 @@ const paymentOrCreditPattern =
   /(?:pagamentos?\b|pagamentos?\s*\/\s*cr[eé]ditos?|cr[eé]ditos?\b|pgto\.?\s+cash|estorno\b|reembolso\b|devolu[cç][aã]o\b|ajuste\s+a\s+cr[eé]dito|saldo\s+fatura\s+anterior|saldo\s+anterior)/i;
 
 const informationalPattern =
-  /(?:resumo\s+da\s+fatura|subtotal\b|^total\b|valor\s+da\s+fatura|compras\s+nacionais|compras\s+internacionais|fatura\s+atual|vencimento|linha\s+digit[aá]vel|c[oó]digo\s+de\s+barras|limite\s+(?:único|unico|total|dispon[ií]vel)|saldo\s+parcelado|total\s+parcelado|p[aá]gina\s+\d+|data\s+descri[cç][aã]o\s+pa[ií]s\s+valor)/i;
+  /(?:resumo\s+da\s+fatura|subtotal\b|^total\b|^valor$|valor\s+da\s+fatura|compras\s+nacionais|compras\s+internacionais|fatura\s+atual|vencimento|linha\s+digit[aá]vel|c[oó]digo\s+de\s+barras|limite\s+(?:único|unico|total|dispon[ií]vel)|saldo\s+parcelado|total\s+parcelado|p[aá]gina\s+\d+|data\s+descri[cç][aã]o\s+pa[ií]s\s+valor)/i;
 
 function normalizeLine(value: string) {
   return value.replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' ').trim();
