@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
+import { authenticateWithBiometrics } from '../lib/biometric';
 
 export type UserProfile = {
   id: string;
@@ -20,6 +21,7 @@ type AuthState = {
   isAuthenticated: boolean;
   register: (data: { name: string; email: string; password: string }) => Promise<void>;
   login: (email: string, password: string) => Promise<boolean>;
+  unlockWithBiometrics: () => Promise<boolean>;
   logout: () => void;
   updateProfile: (data: Partial<Pick<UserProfile, 'name' | 'email' | 'avatar'>>) => void;
   changePassword: (currentPassword: string, nextPassword: string) => Promise<boolean>;
@@ -111,6 +113,17 @@ export const useAuthStore = create<AuthState>()(
         const valid = await verifyCredential(password, credential);
         if (valid) set({ isAuthenticated: true });
         return valid;
+      },
+
+      async unlockWithBiometrics() {
+        if (!get().user) return false;
+        try {
+          await authenticateWithBiometrics();
+          set({ isAuthenticated: true });
+          return true;
+        } catch {
+          return false;
+        }
       },
 
       logout() {
