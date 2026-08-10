@@ -83,8 +83,9 @@ export function LoginPage() {
     }
   }
 
-  const biometricAvailable = mode === 'login' && user && biometricStatus?.isAvailable;
-  const isFaceUnlock = biometricStatus?.biometryType === BiometryType.FaceID;
+  const biometricType = biometricStatus?.biometryType ?? BiometryType.None;
+  const biometricAvailable = Boolean(mode === 'login' && user && biometricStatus?.isAvailable);
+  const isFaceUnlock = biometricType === BiometryType.FaceID;
 
   return (
     <main className="auth-page">
@@ -194,7 +195,7 @@ export function LoginPage() {
                 {isFaceUnlock ? <ScanFace size={19} /> : <Fingerprint size={19} />}
                 {biometricLoading
                   ? 'Confirmando biometria...'
-                  : biometricButtonLabel(biometricStatus.biometryType)}
+                  : biometricButtonLabel(biometricType)}
               </button>
             )}
           </form>
