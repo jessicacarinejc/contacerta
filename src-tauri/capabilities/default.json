@@ -1,10 +1,11 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permissões mínimas do Conta Certa para desktop e Android",
+  "description": "Permissões base do Conta Certa",
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "store:default"
+    "store:default",
+    "file-access:default"
   ]
 }

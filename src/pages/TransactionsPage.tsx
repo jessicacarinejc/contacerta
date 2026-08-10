@@ -17,6 +17,7 @@ export function TransactionsPage() {
   const remove = useFinanceStore((state) => state.deleteTransaction);
   const [createModal, setCreateModal] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [transactionToDelete, setTransactionToDelete] = useState<Transaction | null>(null);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
 
@@ -52,6 +53,12 @@ export function TransactionsPage() {
 
   function closeEditModal() {
     setEditingTransaction(null);
+  }
+
+  function confirmDelete() {
+    if (!transactionToDelete) return;
+    remove(transactionToDelete.id);
+    setTransactionToDelete(null);
   }
 
   return (
@@ -157,7 +164,7 @@ export function TransactionsPage() {
                       </button>
                       <button
                         className="icon-button"
-                        onClick={() => remove(item.id)}
+                        onClick={() => setTransactionToDelete(item)}
                         aria-label={`Excluir ${item.description}`}
                         title="Excluir movimentação"
                       >
@@ -183,6 +190,41 @@ export function TransactionsPage() {
       >
         {editingTransaction && (
           <TransactionForm transaction={editingTransaction} onDone={closeEditModal} />
+        )}
+      </Modal>
+
+      <Modal
+        open={Boolean(transactionToDelete)}
+        onClose={() => setTransactionToDelete(null)}
+        title="Confirmar exclusão"
+      >
+        {transactionToDelete && (
+          <div className="form-stack">
+            <p>
+              Confirma a exclusão desta movimentação? Esta ação remove o lançamento da sua base financeira.
+            </p>
+            <Card>
+              <strong>{transactionToDelete.description}</strong>
+              <p>
+                {new Date(`${transactionToDelete.date}T12:00:00`).toLocaleDateString('pt-BR')} ·{' '}
+                {toCurrency(transactionToDelete.amount)}
+                {transactionToDelete.installment
+                  ? ` · Parcela ${transactionToDelete.installment.current}/${transactionToDelete.installment.total}`
+                  : ''}
+              </p>
+              {transactionToDelete.thirdParty && (
+                <small>Compra para terceiro: {transactionToDelete.thirdParty}</small>
+              )}
+            </Card>
+            <div className="form-actions">
+              <Button variant="secondary" type="button" onClick={() => setTransactionToDelete(null)}>
+                Cancelar
+              </Button>
+              <Button variant="danger" type="button" onClick={confirmDelete}>
+                <Trash2 size={17} /> Confirmar exclusão
+              </Button>
+            </div>
+          </div>
         )}
       </Modal>
     </div>

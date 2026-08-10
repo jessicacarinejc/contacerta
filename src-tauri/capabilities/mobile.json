@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "conta-certa-mobile",
+  "description": "Permissões nativas do Conta Certa para autenticação biométrica",
+  "windows": ["main"],
+  "platforms": ["android", "iOS"],
+  "permissions": [
+    "biometric:allow-status",
+    "biometric:allow-authenticate"
+  ]
+}
