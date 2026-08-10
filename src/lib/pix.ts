@@ -19,8 +19,9 @@ function normalizeMerchantText(value: string, maxLength: number, fallback: strin
 
 function crc16Ccitt(payload: string) {
   let crc = 0xffff;
-  for (let index = 0; index < payload.length; index += 1) {
-    crc ^= payload.charCodeAt(index) << 8;
+  const bytes = new TextEncoder().encode(payload);
+  for (const byte of bytes) {
+    crc ^= byte << 8;
     for (let bit = 0; bit < 8; bit += 1) {
       crc = (crc & 0x8000) !== 0 ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff;
     }
@@ -108,10 +109,13 @@ export function buildPixPayload(options: PixPayloadOptions) {
   const key = options.key.trim();
   if (!key) return '';
 
+  const normalizedDescription = options.description?.trim()
+    ? normalizeMerchantText(options.description, 72, 'CONTA CERTA')
+    : '';
   const merchantAccount = [
     emv('00', PIX_GUI),
     emv('01', key),
-    options.description?.trim() ? emv('02', options.description.trim().slice(0, 72)) : '',
+    normalizedDescription ? emv('02', normalizedDescription) : '',
   ].join('');
 
   const merchantName = normalizeMerchantText(options.merchantName, 25, 'CONTA CERTA');
