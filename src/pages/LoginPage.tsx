@@ -1,11 +1,18 @@
-import { FormEvent, useState } from 'react';
-import { Eye, EyeOff, LockKeyhole, Mail, UserRound } from 'lucide-react';
+import { FormEvent, useEffect, useState } from 'react';
+import { Eye, EyeOff, Fingerprint, LockKeyhole, Mail, ScanFace, UserRound } from 'lucide-react';
+import {
+  BiometryType,
+  biometricButtonLabel,
+  checkBiometricStatus,
+  type BiometricStatus,
+} from '../lib/biometric';
 import { useAuthStore } from '../store/useAuthStore';
 
 export function LoginPage() {
   const user = useAuthStore((state) => state.user);
   const login = useAuthStore((state) => state.login);
   const register = useAuthStore((state) => state.register);
+  const unlockWithBiometrics = useAuthStore((state) => state.unlockWithBiometrics);
   const [mode, setMode] = useState<'login' | 'register'>(user ? 'login' : 'register');
   const [name, setName] = useState(user?.name ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
@@ -14,6 +21,27 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [biometricStatus, setBiometricStatus] = useState<BiometricStatus | null>(null);
+  const [biometricLoading, setBiometricLoading] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    if (mode !== 'login' || !user) {
+      setBiometricStatus(null);
+      return () => {
+        active = false;
+      };
+    }
+
+    void checkBiometricStatus().then((status) => {
+      if (active) setBiometricStatus(status);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [mode, user]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -42,6 +70,22 @@ export function LoginPage() {
     }
   }
 
+  async function handleBiometricUnlock() {
+    setError('');
+    setBiometricLoading(true);
+    try {
+      const unlocked = await unlockWithBiometrics();
+      if (!unlocked) {
+        setError('Não foi possível confirmar a biometria. Você ainda pode entrar com sua senha.');
+      }
+    } finally {
+      setBiometricLoading(false);
+    }
+  }
+
+  const biometricAvailable = mode === 'login' && user && biometricStatus?.isAvailable;
+  const isFaceUnlock = biometricStatus?.biometryType === BiometryType.FaceID;
+
   return (
     <main className="auth-page">
       <section className="auth-visual" aria-label="Conta Certa">
@@ -59,7 +103,7 @@ export function LoginPage() {
           <h2>{mode === 'login' ? 'Entrar na sua conta' : 'Criar perfil de usuário'}</h2>
           <p>
             {mode === 'login'
-              ? 'Informe suas credenciais para continuar.'
+              ? 'Use sua senha ou, quando disponível no aparelho, a biometria para continuar.'
               : 'Seus dados ficam armazenados localmente neste dispositivo.'}
           </p>
 
@@ -137,8 +181,22 @@ export function LoginPage() {
             {error && <div className="auth-error" role="alert">{error}</div>}
 
             <button className="button button-primary auth-submit" type="submit" disabled={loading}>
-              {loading ? 'Processando...' : mode === 'login' ? 'Entrar' : 'Criar conta'}
+              {loading ? 'Processando...' : mode === 'login' ? 'Entrar com senha' : 'Criar conta'}
             </button>
+
+            {biometricAvailable && (
+              <button
+                className="button button-secondary auth-submit"
+                type="button"
+                onClick={() => void handleBiometricUnlock()}
+                disabled={biometricLoading}
+              >
+                {isFaceUnlock ? <ScanFace size={19} /> : <Fingerprint size={19} />}
+                {biometricLoading
+                  ? 'Confirmando biometria...'
+                  : biometricButtonLabel(biometricStatus.biometryType)}
+              </button>
+            )}
           </form>
 
           <button
