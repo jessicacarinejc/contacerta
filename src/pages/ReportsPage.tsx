@@ -6,7 +6,7 @@ import { BalanceChart, CategoryChart, IncomeExpenseChart } from '../components/c
 import { Button, Card, CardHeader } from '../components/ui';
 import { toCurrency } from '../lib/currency';
 import { categoryTotals, monthTransactions, totals } from '../lib/finance';
-import { isAndroid } from '../lib/platform';
+import { exportPdfNative } from '../lib/native-file-export';
 import {
   collectThirdParties,
   filterThirdPartyTransactions,
@@ -16,44 +16,12 @@ import {
 import { useFinanceStore } from '../store/useFinanceStore';
 
 async function deliverPdf(pdf: jsPDF, fileName: string, title: string) {
-  if (!isAndroid()) {
-    pdf.save(fileName);
-    return 'downloaded' as const;
-  }
+  const buffer = pdf.output('arraybuffer');
+  const deliveredNatively = await exportPdfNative(buffer, fileName, title);
 
-  const blob = pdf.output('blob');
-  const file = new File([blob], fileName, { type: 'application/pdf' });
-  const shareNavigator = navigator as Navigator & {
-    share?: (data: ShareData) => Promise<void>;
-    canShare?: (data: ShareData) => boolean;
-  };
+  if (deliveredNatively) return 'native' as const;
 
-  if (
-    shareNavigator.share &&
-    (!shareNavigator.canShare || shareNavigator.canShare({ files: [file] }))
-  ) {
-    try {
-      await shareNavigator.share({
-        title,
-        text: 'Relatório gerado pelo Conta Certa.',
-        files: [file],
-      });
-      return 'shared' as const;
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') return 'cancelled' as const;
-    }
-  }
-
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = fileName;
-  anchor.rel = 'noopener';
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.open(url, '_blank', 'noopener,noreferrer');
-  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  pdf.save(fileName);
   return 'downloaded' as const;
 }
 
@@ -78,7 +46,7 @@ export function ReportsPage() {
     .filter((item) => item.status !== 'paid' || item.futureInstallment)
     .reduce((sum, item) => sum + item.amount, 0);
 
-  function exportPdf() {
+  async function exportPdf() {
     const pdf = new jsPDF();
     pdf.setFontSize(20);
     pdf.text('Conta Certa - Relatório Financeiro', 20, 22);
@@ -90,7 +58,16 @@ export function ReportsPage() {
     data.slice(0, 8).forEach((item, index) =>
       pdf.text(`${item.name}: ${toCurrency(item.value)}`, 24, 86 + index * 8),
     );
-    void deliverPdf(pdf, 'conta-certa-relatorio.pdf', 'Relatório Financeiro - Conta Certa');
+
+    try {
+      await deliverPdf(pdf, 'conta-certa-relatorio.pdf', 'Relatório Financeiro - Conta Certa');
+    } catch (error) {
+      setReportMessage(
+        error instanceof Error
+          ? `Não foi possível salvar ou compartilhar o relatório: ${error.message}`
+          : 'Não foi possível salvar ou compartilhar o relatório.',
+      );
+    }
   }
 
   async function exportThirdPartyPdf() {
@@ -153,16 +130,16 @@ export function ReportsPage() {
         title,
       );
 
-      if (result === 'shared') {
-        setReportMessage('Relatório gerado. Escolha onde salvar ou compartilhar o PDF.');
-      } else if (result === 'downloaded') {
-        setReportMessage('Relatório gerado com sucesso.');
+      if (result === 'native') {
+        setReportMessage('Relatório pronto. Escolha onde salvar ou compartilhar o PDF.');
+      } else {
+        setReportMessage('Relatório PDF salvo com sucesso.');
       }
     } catch (error) {
       setReportMessage(
         error instanceof Error
-          ? `Não foi possível gerar o relatório: ${error.message}`
-          : 'Não foi possível gerar o relatório de terceiros.',
+          ? `Não foi possível salvar ou compartilhar o relatório: ${error.message}`
+          : 'Não foi possível salvar ou compartilhar o relatório de terceiros.',
       );
     } finally {
       setGeneratingThirdPartyReport(false);
@@ -179,7 +156,7 @@ export function ReportsPage() {
             <Button variant="secondary" onClick={() => window.print()}>
               <Printer size={17} /> Imprimir
             </Button>
-            <Button onClick={exportPdf}>
+            <Button onClick={() => void exportPdf()}>
               <Download size={17} /> Exportar PDF
             </Button>
           </>
