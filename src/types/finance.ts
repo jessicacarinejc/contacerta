@@ -2,6 +2,7 @@ export type TransactionType = 'income' | 'expense' | 'transfer';
 export type TransactionStatus = 'paid' | 'pending' | 'overdue' | 'cancelled';
 export type AccountType = 'checking' | 'savings' | 'wallet' | 'investment';
 export type DocumentStatus = 'processing' | 'review' | 'approved' | 'rejected' | 'duplicate' | 'error';
+export type PixKeyType = 'cpf' | 'cnpj' | 'phone' | 'email' | 'random';
 
 export interface Account {
   id: string;
@@ -39,6 +40,8 @@ export interface Transaction {
   thirdParty?: string;
   futureInstallment?: boolean;
   documentId?: string;
+  cardId?: string;
+  cardInvoiceMonth?: string;
   createdAt: string;
 }
 
@@ -52,6 +55,10 @@ export interface CreditCard {
   closingDay: number;
   dueDay: number;
   color: string;
+  brand?: string;
+  holder?: string;
+  paymentAccountId?: string;
+  active?: boolean;
 }
 
 export interface Budget {
@@ -123,4 +130,11 @@ export interface FinanceSettings {
   monthlyIncomeGoal: number;
   emergencyReserveMonths: number;
   notificationsEnabled: boolean;
+  pixKeyType?: PixKeyType;
+  pixKey?: string;
+  pixHolderName?: string;
+  pixInstitution?: string;
+  pixCity?: string;
+  showPixInThirdPartyReports?: boolean;
+  includePixQrCode?: boolean;
 }
