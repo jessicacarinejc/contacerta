@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { authenticateWithBiometrics } from '../lib/biometric';
+import { platformStorage } from '../lib/platform-storage';
 
 export type UserProfile = {
   id: string;
@@ -143,7 +144,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'conta-certa-auth',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => platformStorage),
       partialize: (state) => ({
         user: state.user,
         credential: state.credential,
