@@ -120,7 +120,7 @@ function cleanDescription(line: string, amountText?: string) {
     .replace(/\b(?:[01]?\d|2[0-3]):[0-5]\d\b/g, ' ')
     .replace(/[|•›>]+/g, ' ')
     .replace(/\s{2,}/g, ' ')
-    .replace(/^[-–—:;,.\s]+|[-–—:;,.\s]+$/g, '')
+    .replace(/^[-–—:;.\s]+|[-–—:;.\s]+$/g, '')
     .trim();
 }
 
@@ -163,15 +163,17 @@ export function parseImageTransactionList(
 
   for (const line of lines) {
     const last = items[items.length - 1];
+    const amountMatches = [...line.matchAll(moneyPattern)];
+    moneyPattern.lastIndex = 0;
+    const hasAmount = amountMatches.length > 0;
+
     const named = namedDate(line, fallbackYear);
-    if (named && !moneyPattern.test(line)) {
+    if (named && !hasAmount) {
       currentDate = named;
       pendingDescription = '';
       afterItem = false;
-      moneyPattern.lastIndex = 0;
       continue;
     }
-    moneyPattern.lastIndex = 0;
 
     const numeric = numericDate(line, fallbackYear);
     if (numeric) {
@@ -186,21 +188,21 @@ export function parseImageTransactionList(
     }
 
     const time = line.match(timeOnlyPattern);
-    if (time && last && afterItem) {
+    if (!hasAmount && time && last && afterItem) {
       last.time = `${time[1].padStart(2, '0')}:${time[2]}`;
       appendSource(last, line);
       continue;
     }
 
     const cardFinal = line.match(cardFinalPattern);
-    if (cardFinal && last && afterItem) {
+    if (!hasAmount && cardFinal && last && afterItem) {
       last.cardLastDigits = cardFinal[1];
       appendSource(last, line);
       continue;
     }
 
     const installment = parseInstallment(line);
-    if (installment && last && afterItem) {
+    if (!hasAmount && installment && last && afterItem) {
       last.installment = installment;
       appendSource(last, line);
       continue;
@@ -211,8 +213,6 @@ export function parseImageTransactionList(
       continue;
     }
 
-    const amountMatches = [...line.matchAll(moneyPattern)];
-    moneyPattern.lastIndex = 0;
     if (amountMatches.length) {
       const chosen = amountMatches[amountMatches.length - 1];
       const amount = Math.abs(currencyToNumber(chosen[1]));
