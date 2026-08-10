@@ -1,5 +1,6 @@
 import { Download, FileText, Printer } from 'lucide-react';
 import { jsPDF } from 'jspdf';
+import QRCode from 'qrcode';
 import { useMemo, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { BalanceChart, CategoryChart, IncomeExpenseChart } from '../components/charts/FinanceCharts';
@@ -7,6 +8,13 @@ import { Button, Card, CardHeader } from '../components/ui';
 import { toCurrency } from '../lib/currency';
 import { categoryTotals, monthTransactions, totals } from '../lib/finance';
 import { exportPdfNative } from '../lib/native-file-export';
+import { buildPixPayload, sanitizePixKey } from '../lib/pix';
+import {
+  addBrandedFooters,
+  addBrandedHeader,
+  addSummaryBox,
+  createReportId,
+} from '../lib/report-branding';
 import {
   collectThirdParties,
   filterThirdPartyTransactions,
@@ -25,8 +33,18 @@ async function deliverPdf(pdf: jsPDF, fileName: string, title: string) {
   return 'downloaded' as const;
 }
 
+function formattedPixKey(key: string, type?: string) {
+  if (type === 'cpf' && /^\d{11}$/.test(key)) {
+    return key.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+  }
+  if (type === 'cnpj' && /^\d{14}$/.test(key)) {
+    return key.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+  }
+  return key;
+}
+
 export function ReportsPage() {
-  const { transactions, categories } = useFinanceStore();
+  const { transactions, categories, settings } = useFinanceStore();
   const current = monthTransactions(transactions.filter((item) => !item.futureInstallment));
   const summary = totals(current);
   const data = categoryTotals(current, categories);
@@ -34,6 +52,8 @@ export function ReportsPage() {
   const [selectedThirdParty, setSelectedThirdParty] = useState('');
   const [reportMessage, setReportMessage] = useState('');
   const [generatingThirdPartyReport, setGeneratingThirdPartyReport] = useState(false);
+  const [includePix, setIncludePix] = useState(settings.showPixInThirdPartyReports ?? true);
+  const [includeQrCode, setIncludeQrCode] = useState(settings.includePixQrCode ?? true);
   const thirdPartyTransactions = useMemo(
     () => filterThirdPartyTransactions(transactions, selectedThirdParty),
     [transactions, selectedThirdParty],
@@ -45,19 +65,36 @@ export function ReportsPage() {
   const thirdPartyPending = thirdPartyTransactions
     .filter((item) => item.status !== 'paid' || item.futureInstallment)
     .reduce((sum, item) => sum + item.amount, 0);
+  const pixConfigured = Boolean(settings.pixKey?.trim());
 
   async function exportPdf() {
     const pdf = new jsPDF();
-    pdf.setFontSize(20);
-    pdf.text('Conta Certa - Relatório Financeiro', 20, 22);
-    pdf.setFontSize(11);
-    pdf.text(`Receitas: ${toCurrency(summary.income)}`, 20, 42);
-    pdf.text(`Despesas: ${toCurrency(summary.expense)}`, 20, 50);
-    pdf.text(`Resultado: ${toCurrency(summary.result)}`, 20, 58);
-    pdf.text('Principais categorias:', 20, 76);
-    data.slice(0, 8).forEach((item, index) =>
-      pdf.text(`${item.name}: ${toCurrency(item.value)}`, 24, 86 + index * 8),
+    const reportId = createReportId('CC-FIN');
+    let y = await addBrandedHeader(
+      pdf,
+      'Relatório Financeiro',
+      `Gerado em ${new Date().toLocaleString('pt-BR')}`,
     );
+
+    addSummaryBox(pdf, 15, y, 55, 'Receitas', toCurrency(summary.income));
+    addSummaryBox(pdf, 77.5, y, 55, 'Despesas', toCurrency(summary.expense));
+    addSummaryBox(pdf, 140, y, 55, 'Resultado', toCurrency(summary.result));
+    y += 30;
+
+    pdf.setTextColor('#092144');
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(11);
+    pdf.text('Principais categorias', 15, y);
+    y += 8;
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(9);
+    data.slice(0, 10).forEach((item) => {
+      pdf.text(item.name, 18, y);
+      pdf.text(toCurrency(item.value), 195, y, { align: 'right' });
+      y += 7;
+    });
+
+    addBrandedFooters(pdf, reportId);
 
     try {
       await deliverPdf(pdf, 'conta-certa-relatorio.pdf', 'Relatório Financeiro - Conta Certa');
@@ -85,20 +122,29 @@ export function ReportsPage() {
       const title = selectedName
         ? `Despesas de terceiro - ${selectedName}`
         : 'Despesas feitas para terceiros';
+      const reportId = createReportId('CC-TER');
+      let y = await addBrandedHeader(
+        pdf,
+        title,
+        `Demonstrativo gerado em ${new Date().toLocaleString('pt-BR')} · ${thirdPartyTransactions.length} lançamento(s)`,
+      );
 
-      pdf.setFontSize(18);
-      pdf.text(title, 15, 18);
-      pdf.setFontSize(9);
-      pdf.text(`Lançamentos: ${thirdPartyTransactions.length}`, 15, 28);
-      pdf.text(`Total geral: ${toCurrency(thirdPartyTotal)}`, 15, 34);
-      pdf.text(`Realizado: ${toCurrency(thirdPartyPaid)}`, 15, 40);
-      pdf.text(`Pendente/futuro: ${toCurrency(thirdPartyPending)}`, 15, 46);
+      addSummaryBox(pdf, 15, y, 40, 'Lançamentos', String(thirdPartyTransactions.length));
+      addSummaryBox(pdf, 61.5, y, 40, 'Realizado', toCurrency(thirdPartyPaid));
+      addSummaryBox(pdf, 108, y, 40, 'Pendente/futuro', toCurrency(thirdPartyPending));
+      addSummaryBox(pdf, 154.5, y, 40, 'Total', toCurrency(thirdPartyTotal));
+      y += 28;
 
-      let y = 58;
+      pdf.setTextColor('#092144');
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(10);
+      pdf.text('Detalhamento das despesas', 15, y);
+      y += 7;
+
       for (const item of thirdPartyTransactions) {
-        if (y > 270) {
+        if (y > 260) {
           pdf.addPage();
-          y = 18;
+          y = await addBrandedHeader(pdf, title, 'Continuação do detalhamento');
         }
 
         const date = new Date(`${item.dueDate || item.date}T12:00:00`).toLocaleDateString('pt-BR');
@@ -106,15 +152,76 @@ export function ReportsPage() {
           ? `Parcela ${item.installment.current}/${item.installment.total}`
           : 'Sem parcela';
         const status = thirdPartyStatusLabel(item);
-        const line = `${date} | ${normalizeThirdPartyName(item.thirdParty)} | ${installment} | ${status} | ${toCurrency(item.amount)}`;
-        pdf.setFontSize(9);
-        pdf.text(line, 15, y);
-        y += 5;
-        pdf.setFontSize(8);
-        const descriptionLines = pdf.splitTextToSize(item.description, 178) as string[];
-        pdf.text(descriptionLines, 18, y);
-        y += descriptionLines.length * 4 + 3;
+
+        pdf.setFillColor('#F7F9FC');
+        pdf.setDrawColor('#E4E9F0');
+        pdf.roundedRect(15, y - 3, 180, 16, 1.5, 1.5, 'FD');
+        pdf.setTextColor('#092144');
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(8.5);
+        pdf.text(`${date} · ${installment} · ${status}`, 19, y + 2);
+        pdf.text(toCurrency(item.amount), 191, y + 2, { align: 'right' });
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor('#475467');
+        const descriptionLines = pdf.splitTextToSize(item.description, 145) as string[];
+        pdf.text(descriptionLines.slice(0, 2), 19, y + 8);
+        y += 20;
       }
+
+      if (includePix && pixConfigured && settings.pixKey) {
+        if (y > 205) {
+          pdf.addPage();
+          y = await addBrandedHeader(pdf, title, 'Dados para pagamento');
+        }
+
+        const normalizedKey = sanitizePixKey(settings.pixKey, settings.pixKeyType);
+        const payload = buildPixPayload({
+          key: normalizedKey,
+          merchantName: settings.pixHolderName || settings.userName,
+          merchantCity: settings.pixCity || 'Salvador',
+          amount: thirdPartyTotal,
+          description: selectedName ? `Reembolso ${selectedName}` : 'Reembolso Conta Certa',
+          transactionId: reportId.replace(/[^A-Za-z0-9]/g, '').slice(-25),
+        });
+        const qrDataUrl =
+          includeQrCode && payload
+            ? await QRCode.toDataURL(payload, { errorCorrectionLevel: 'M', margin: 1, width: 360 })
+            : undefined;
+
+        const boxHeight = qrDataUrl ? 76 : 58;
+        pdf.setFillColor('#F3FAF5');
+        pdf.setDrawColor('#279B48');
+        pdf.roundedRect(15, y, 180, boxHeight, 2, 2, 'FD');
+        pdf.setTextColor('#092144');
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(12);
+        pdf.text('Pagamento via PIX', 20, y + 10);
+        pdf.setFontSize(9);
+        pdf.text(`Valor: ${toCurrency(thirdPartyTotal)}`, 20, y + 19);
+        pdf.setFont('helvetica', 'normal');
+        pdf.text(`Titular: ${settings.pixHolderName || settings.userName}`, 20, y + 27);
+        pdf.text(
+          `Chave PIX (${(settings.pixKeyType || 'chave').toUpperCase()}): ${formattedPixKey(normalizedKey, settings.pixKeyType)}`,
+          20,
+          y + 35,
+        );
+        if (settings.pixInstitution) {
+          pdf.text(`Instituição: ${settings.pixInstitution}`, 20, y + 43);
+        }
+
+        if (qrDataUrl) {
+          pdf.addImage(qrDataUrl, 'PNG', 153, y + 8, 34, 34);
+        }
+
+        pdf.setFontSize(7.2);
+        pdf.setTextColor('#475467');
+        pdf.text('PIX Copia e Cola:', 20, y + 50);
+        const payloadLines = pdf.splitTextToSize(payload, qrDataUrl ? 126 : 165) as string[];
+        pdf.text(payloadLines.slice(0, qrDataUrl ? 5 : 7), 20, y + 55);
+        y += boxHeight + 6;
+      }
+
+      addBrandedFooters(pdf, reportId);
 
       const safeName = selectedName
         ? selectedName
@@ -124,11 +231,7 @@ export function ReportsPage() {
             .replace(/^-+|-+$/g, '')
             .toLowerCase()
         : 'todos';
-      const result = await deliverPdf(
-        pdf,
-        `conta-certa-terceiros-${safeName}.pdf`,
-        title,
-      );
+      const result = await deliverPdf(pdf, `conta-certa-terceiros-${safeName}.pdf`, title);
 
       if (result === 'native') {
         setReportMessage('Relatório pronto. Escolha onde salvar ou compartilhar o PDF.');
@@ -195,6 +298,24 @@ export function ReportsPage() {
             <option value="">Todos os terceiros</option>
             {thirdParties.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={includePix}
+              onChange={(event) => setIncludePix(event.target.checked)}
+              disabled={!pixConfigured}
+            />
+            Incluir PIX
+          </label>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={includeQrCode}
+              onChange={(event) => setIncludeQrCode(event.target.checked)}
+              disabled={!pixConfigured || !includePix}
+            />
+            QR Code
+          </label>
           <Button
             onClick={() => void exportThirdPartyPdf()}
             disabled={thirdPartyTransactions.length === 0 || generatingThirdPartyReport}
@@ -203,6 +324,12 @@ export function ReportsPage() {
             {generatingThirdPartyReport ? 'Gerando...' : 'Gerar relatório por terceiro'}
           </Button>
         </div>
+
+        {!pixConfigured && (
+          <div className="processing-message">
+            Cadastre sua chave PIX em Perfil para incluí-la nos relatórios enviados a terceiros.
+          </div>
+        )}
 
         {reportMessage && <div className="processing-message">{reportMessage}</div>}
 
