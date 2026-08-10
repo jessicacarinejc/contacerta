@@ -20,9 +20,7 @@ function inferredInvoiceMonth(transaction: Transaction, card: CreditCard) {
   const date = new Date(`${transaction.date}T12:00:00`);
   let closingMonth = date.getMonth();
   let closingYear = date.getFullYear();
-  if (date.getDate() > card.closingDay) {
-    closingMonth += 1;
-  }
+  if (date.getDate() > card.closingDay) closingMonth += 1;
 
   const closingDate = new Date(closingYear, closingMonth, Math.min(card.closingDay, 28), 12);
   closingMonth = closingDate.getMonth();
@@ -32,12 +30,29 @@ function inferredInvoiceMonth(transaction: Transaction, card: CreditCard) {
   return monthKey(new Date(closingYear, closingMonth + dueMonthOffset, 1, 12));
 }
 
-function sameInstallment(item: { installment?: { current: number; total: number } }, transaction: Transaction) {
+function sameInstallment(
+  item: { installment?: { current: number; total: number } },
+  transaction: Transaction,
+) {
   if (!item.installment && !transaction.installment) return true;
   return (
     item.installment?.current === transaction.installment?.current &&
     item.installment?.total === transaction.installment?.total
   );
+}
+
+function rawTextCardDigits(rawText?: string) {
+  if (!rawText) return [];
+  const patterns = [
+    /\bfinal\s+(\d{4})\b/gi,
+    /\bcart[aã]o(?:\s+n[ºo.]*)?\s*(?:final\s*)?(\d{4})\b/gi,
+    /\b(?:visa|mastercard|elo|amex|american\s+express)\b[^\n\r]{0,45}?\b(\d{4})\b/gi,
+  ];
+  const values = new Set<string>();
+  for (const pattern of patterns) {
+    for (const match of rawText.matchAll(pattern)) values.add(match[1]);
+  }
+  return [...values];
 }
 
 function cardLastDigitsForTransaction(transaction: Transaction, document?: DocumentRecord) {
@@ -52,11 +67,18 @@ function cardLastDigitsForTransaction(transaction: Transaction, document?: Docum
       sameInstallment(item, transaction),
   );
 
-  const matchingDigits = [...new Set(matchingItems.map((item) => item.cardLastDigits).filter(Boolean))];
+  const matchingDigits = [
+    ...new Set(matchingItems.map((item) => item.cardLastDigits).filter(Boolean)),
+  ];
   if (matchingDigits.length === 1) return matchingDigits[0];
 
-  const documentDigits = [...new Set(allItems.map((item) => item.cardLastDigits).filter(Boolean))];
-  return documentDigits.length === 1 ? documentDigits[0] : undefined;
+  const documentDigits = [
+    ...new Set(allItems.map((item) => item.cardLastDigits).filter(Boolean)),
+  ];
+  if (documentDigits.length === 1) return documentDigits[0];
+
+  const rawDigits = rawTextCardDigits(document.rawText);
+  return rawDigits.length === 1 ? rawDigits[0] : undefined;
 }
 
 export function resolveTransactionCard(
