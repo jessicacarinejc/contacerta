@@ -187,38 +187,40 @@ jobs:
       - name: Build optimized unsigned ARM64 release APK
         run: npm run android:build:apk
 
-      - name: Apply temporary CI signature, validate and rename Android APK
+      - name: Sign, validate and rename Android APK with persistent release key
         shell: bash
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           set -euo pipefail
+
+          if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ] || [ -z "${ANDROID_KEYSTORE_PASSWORD:-}" ]; then
+            echo "Assinatura Android não configurada. Cadastre ANDROID_KEYSTORE_BASE64 e ANDROID_KEYSTORE_PASSWORD nos Actions secrets antes de publicar uma release."
+            exit 1
+          fi
 
           UNSIGNED="$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*unsigned*.apk' | head -n 1)"
           test -n "$UNSIGNED" || { echo "APK release unsigned não encontrado. A publicação foi bloqueada."; exit 1; }
 
-          KEYSTORE="$RUNNER_TEMP/conta-certa-ci.jks"
-          PASSWORD="conta-certa-ci-build"
+          KEYSTORE="$RUNNER_TEMP/conta-certa-release.jks"
           ALIGNED="$RUNNER_TEMP/conta-certa-aligned.apk"
           FINAL="dist-android/Conta-Certa-v${VERSION}-arm64.apk"
 
-          keytool -genkeypair -noprompt \
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          keytool -list \
             -keystore "$KEYSTORE" \
-            -storepass "$PASSWORD" \
-            -keypass "$PASSWORD" \
-            -alias contacerta-ci \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 3650 \
-            -dname "CN=Conta Certa CI, OU=Direct Distribution, O=Conta Certa, L=Santo Antonio de Jesus, ST=BA, C=BR"
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+            -alias contacerta >/dev/null
 
           mkdir -p dist-android
           "${ANDROID_HOME}/build-tools/${BUILD_TOOLS_VERSION}/zipalign" -p -f 4 "$UNSIGNED" "$ALIGNED"
           "${ANDROID_HOME}/build-tools/${BUILD_TOOLS_VERSION}/apksigner" sign \
             --ks "$KEYSTORE" \
-            --ks-key-alias contacerta-ci \
-            --ks-pass pass:"$PASSWORD" \
-            --key-pass pass:"$PASSWORD" \
+            --ks-key-alias contacerta \
+            --ks-pass pass:"$ANDROID_KEYSTORE_PASSWORD" \
+            --key-pass pass:"$ANDROID_KEYSTORE_PASSWORD" \
             --out "$FINAL" \
             "$ALIGNED"
 
