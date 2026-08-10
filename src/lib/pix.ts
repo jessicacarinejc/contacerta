@@ -80,7 +80,7 @@ export function detectPixKeyType(key: string) {
 }
 
 export function parsePixPayload(payload: string): ParsedPixPayload | undefined {
-  const cleaned = payload.replace(/\s+/g, '').trim();
+  const cleaned = payload.replace(/[\r\n\t]+/g, '').trim();
   if (!cleaned.startsWith('000201')) return undefined;
 
   const fields = parseFields(cleaned);
