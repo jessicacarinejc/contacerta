@@ -21,8 +21,17 @@ function localGet(name: string) {
 function localSet(name: string, value: string) {
   try {
     localStorage.setItem(name, value);
+    return true;
   } catch {
-    // O armazenamento nativo continua disponível como segunda fonte.
+    // Se o WebView ficar sem espaço, não podemos manter um espelho antigo: na
+    // próxima inicialização ele teria prioridade sobre o valor novo gravado no
+    // plugin-store. Remover a cópia obsoleta força a leitura da fonte nativa.
+    try {
+      localStorage.removeItem(name);
+    } catch {
+      // O armazenamento nativo continua sendo a fonte persistente no Tauri.
+    }
+    return false;
   }
 }
 
@@ -38,9 +47,9 @@ export const platformStorage: StateStorage = {
   async getItem(name) {
     if (!isTauri()) return localGet(name);
 
-    // O espelho do WebView é consultado primeiro. Isso evita que um estado nativo
-    // antigo reapareça depois de uma restauração quando o plugin-store falhou em
-    // gravar/excluir durante uma instalação anterior.
+    // O espelho do WebView é consultado primeiro quando está íntegro. Se uma
+    // gravação local falhar, localSet remove a cópia obsoleta e esta leitura cai
+    // automaticamente para o armazenamento nativo.
     const localValue = localGet(name);
     if (localValue !== null) return localValue;
 
