@@ -4,40 +4,79 @@ import { useMemo, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { BalanceChart, CategoryChart, IncomeExpenseChart } from '../components/charts/FinanceCharts';
 import { Button, Card, CardHeader } from '../components/ui';
-import { categoryTotals, monthTransactions, totals } from '../lib/finance';
 import { toCurrency } from '../lib/currency';
+import { categoryTotals, monthTransactions, totals } from '../lib/finance';
+import { isAndroid } from '../lib/platform';
+import {
+  collectThirdParties,
+  filterThirdPartyTransactions,
+  normalizeThirdPartyName,
+  thirdPartyStatusLabel,
+} from '../lib/third-party-report';
 import { useFinanceStore } from '../store/useFinanceStore';
+
+async function deliverPdf(pdf: jsPDF, fileName: string, title: string) {
+  if (!isAndroid()) {
+    pdf.save(fileName);
+    return 'downloaded' as const;
+  }
+
+  const blob = pdf.output('blob');
+  const file = new File([blob], fileName, { type: 'application/pdf' });
+  const shareNavigator = navigator as Navigator & {
+    share?: (data: ShareData) => Promise<void>;
+    canShare?: (data: ShareData) => boolean;
+  };
+
+  if (
+    shareNavigator.share &&
+    (!shareNavigator.canShare || shareNavigator.canShare({ files: [file] }))
+  ) {
+    try {
+      await shareNavigator.share({
+        title,
+        text: 'Relatório gerado pelo Conta Certa.',
+        files: [file],
+      });
+      return 'shared' as const;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return 'cancelled' as const;
+    }
+  }
+
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.rel = 'noopener';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.open(url, '_blank', 'noopener,noreferrer');
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return 'downloaded' as const;
+}
 
 export function ReportsPage() {
   const { transactions, categories } = useFinanceStore();
   const current = monthTransactions(transactions.filter((item) => !item.futureInstallment));
   const summary = totals(current);
   const data = categoryTotals(current, categories);
-  const thirdParties = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          transactions
-            .filter((item) => item.type === 'expense' && item.thirdParty)
-            .map((item) => item.thirdParty!.trim()),
-        ),
-      ).sort((a, b) => a.localeCompare(b, 'pt-BR')),
-    [transactions],
-  );
+  const thirdParties = useMemo(() => collectThirdParties(transactions), [transactions]);
   const [selectedThirdParty, setSelectedThirdParty] = useState('');
+  const [reportMessage, setReportMessage] = useState('');
+  const [generatingThirdPartyReport, setGeneratingThirdPartyReport] = useState(false);
   const thirdPartyTransactions = useMemo(
-    () =>
-      transactions
-        .filter(
-          (item) =>
-            item.type === 'expense' &&
-            item.thirdParty &&
-            (!selectedThirdParty || item.thirdParty === selectedThirdParty),
-        )
-        .sort((a, b) => (a.dueDate || a.date).localeCompare(b.dueDate || b.date)),
+    () => filterThirdPartyTransactions(transactions, selectedThirdParty),
     [transactions, selectedThirdParty],
   );
   const thirdPartyTotal = thirdPartyTransactions.reduce((sum, item) => sum + item.amount, 0);
+  const thirdPartyPaid = thirdPartyTransactions
+    .filter((item) => item.status === 'paid' && !item.futureInstallment)
+    .reduce((sum, item) => sum + item.amount, 0);
+  const thirdPartyPending = thirdPartyTransactions
+    .filter((item) => item.status !== 'paid' || item.futureInstallment)
+    .reduce((sum, item) => sum + item.amount, 0);
 
   function exportPdf() {
     const pdf = new jsPDF();
@@ -51,41 +90,83 @@ export function ReportsPage() {
     data.slice(0, 8).forEach((item, index) =>
       pdf.text(`${item.name}: ${toCurrency(item.value)}`, 24, 86 + index * 8),
     );
-    pdf.save('conta-certa-relatorio.pdf');
+    void deliverPdf(pdf, 'conta-certa-relatorio.pdf', 'Relatório Financeiro - Conta Certa');
   }
 
-  function exportThirdPartyPdf() {
-    const pdf = new jsPDF();
-    const title = selectedThirdParty
-      ? `Despesas de terceiro - ${selectedThirdParty}`
-      : 'Despesas de terceiros';
-    pdf.setFontSize(18);
-    pdf.text(title, 18, 20);
-    pdf.setFontSize(10);
-    pdf.text(`Total: ${toCurrency(thirdPartyTotal)}`, 18, 30);
-
-    let y = 42;
-    for (const item of thirdPartyTransactions) {
-      if (y > 275) {
-        pdf.addPage();
-        y = 20;
-      }
-      const date = new Date(`${item.dueDate || item.date}T12:00:00`).toLocaleDateString('pt-BR');
-      const installment = item.installment
-        ? ` - parcela ${item.installment.current}/${item.installment.total}`
-        : '';
-      pdf.text(
-        `${date} | ${item.thirdParty} | ${item.description}${installment} | ${toCurrency(item.amount)}`,
-        18,
-        y,
-      );
-      y += 7;
+  async function exportThirdPartyPdf() {
+    if (thirdPartyTransactions.length === 0) {
+      setReportMessage('Nenhum lançamento de terceiro foi encontrado para gerar o relatório.');
+      return;
     }
-    pdf.save(
-      selectedThirdParty
-        ? `conta-certa-terceiro-${selectedThirdParty.replace(/\s+/g, '-').toLowerCase()}.pdf`
-        : 'conta-certa-despesas-terceiros.pdf',
-    );
+
+    setGeneratingThirdPartyReport(true);
+    setReportMessage('');
+
+    try {
+      const pdf = new jsPDF();
+      const selectedName = normalizeThirdPartyName(selectedThirdParty);
+      const title = selectedName
+        ? `Despesas de terceiro - ${selectedName}`
+        : 'Despesas feitas para terceiros';
+
+      pdf.setFontSize(18);
+      pdf.text(title, 15, 18);
+      pdf.setFontSize(9);
+      pdf.text(`Lançamentos: ${thirdPartyTransactions.length}`, 15, 28);
+      pdf.text(`Total geral: ${toCurrency(thirdPartyTotal)}`, 15, 34);
+      pdf.text(`Realizado: ${toCurrency(thirdPartyPaid)}`, 15, 40);
+      pdf.text(`Pendente/futuro: ${toCurrency(thirdPartyPending)}`, 15, 46);
+
+      let y = 58;
+      for (const item of thirdPartyTransactions) {
+        if (y > 270) {
+          pdf.addPage();
+          y = 18;
+        }
+
+        const date = new Date(`${item.dueDate || item.date}T12:00:00`).toLocaleDateString('pt-BR');
+        const installment = item.installment
+          ? `Parcela ${item.installment.current}/${item.installment.total}`
+          : 'Sem parcela';
+        const status = thirdPartyStatusLabel(item);
+        const line = `${date} | ${normalizeThirdPartyName(item.thirdParty)} | ${installment} | ${status} | ${toCurrency(item.amount)}`;
+        pdf.setFontSize(9);
+        pdf.text(line, 15, y);
+        y += 5;
+        pdf.setFontSize(8);
+        const descriptionLines = pdf.splitTextToSize(item.description, 178) as string[];
+        pdf.text(descriptionLines, 18, y);
+        y += descriptionLines.length * 4 + 3;
+      }
+
+      const safeName = selectedName
+        ? selectedName
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-zA-Z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .toLowerCase()
+        : 'todos';
+      const result = await deliverPdf(
+        pdf,
+        `conta-certa-terceiros-${safeName}.pdf`,
+        title,
+      );
+
+      if (result === 'shared') {
+        setReportMessage('Relatório gerado. Escolha onde salvar ou compartilhar o PDF.');
+      } else if (result === 'downloaded') {
+        setReportMessage('Relatório gerado com sucesso.');
+      }
+    } catch (error) {
+      setReportMessage(
+        error instanceof Error
+          ? `Não foi possível gerar o relatório: ${error.message}`
+          : 'Não foi possível gerar o relatório de terceiros.',
+      );
+    } finally {
+      setGeneratingThirdPartyReport(false);
+    }
   }
 
   return (
@@ -127,17 +208,31 @@ export function ReportsPage() {
       <Card>
         <CardHeader title="Despesas feitas para terceiros" />
         <div className="table-toolbar">
-          <select value={selectedThirdParty} onChange={(event) => setSelectedThirdParty(event.target.value)}>
+          <select
+            value={selectedThirdParty}
+            onChange={(event) => {
+              setSelectedThirdParty(event.target.value);
+              setReportMessage('');
+            }}
+          >
             <option value="">Todos os terceiros</option>
             {thirdParties.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
-          <Button onClick={exportThirdPartyPdf} disabled={thirdPartyTransactions.length === 0}>
-            <Download size={17} /> Gerar relatório por terceiro
+          <Button
+            onClick={() => void exportThirdPartyPdf()}
+            disabled={thirdPartyTransactions.length === 0 || generatingThirdPartyReport}
+          >
+            <Download size={17} />
+            {generatingThirdPartyReport ? 'Gerando...' : 'Gerar relatório por terceiro'}
           </Button>
         </div>
 
+        {reportMessage && <div className="processing-message">{reportMessage}</div>}
+
         <div className="summary-strip">
           <Card><small>Lançamentos</small><strong>{thirdPartyTransactions.length}</strong></Card>
+          <Card><small>Realizado</small><strong>{toCurrency(thirdPartyPaid)}</strong></Card>
+          <Card><small>Pendente/futuro</small><strong>{toCurrency(thirdPartyPending)}</strong></Card>
           <Card><small>Total</small><strong>{toCurrency(thirdPartyTotal)}</strong></Card>
         </div>
 
@@ -150,6 +245,7 @@ export function ReportsPage() {
                   <th>Terceiro</th>
                   <th>Descrição</th>
                   <th>Parcela</th>
+                  <th>Situação</th>
                   <th className="right">Valor</th>
                 </tr>
               </thead>
@@ -157,9 +253,10 @@ export function ReportsPage() {
                 {thirdPartyTransactions.map((item) => (
                   <tr key={item.id}>
                     <td>{new Date(`${item.dueDate || item.date}T12:00:00`).toLocaleDateString('pt-BR')}</td>
-                    <td><strong>{item.thirdParty}</strong></td>
+                    <td><strong>{normalizeThirdPartyName(item.thirdParty)}</strong></td>
                     <td>{item.description}</td>
                     <td>{item.installment ? `${item.installment.current}/${item.installment.total}` : '—'}</td>
+                    <td>{thirdPartyStatusLabel(item)}</td>
                     <td className="right amount expense">-{toCurrency(item.amount)}</td>
                   </tr>
                 ))}

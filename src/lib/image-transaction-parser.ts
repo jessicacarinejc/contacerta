@@ -1,4 +1,5 @@
 import type { ExtractedDocumentItem } from '../types/finance';
+import { parseInstallment, stripInstallment } from './installment-parser';
 
 const monthMap: Record<string, number> = {
   jan: 1,
@@ -33,7 +34,6 @@ const namedDatePattern = /\b(\d{1,2})(?:\s+de)?\s+(jan(?:eiro)?|fev(?:ereiro)?|m
 const numericDateOnlyPattern = /^\s*(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?\s*$/;
 const timeOnlyPattern = /^\s*([01]?\d|2[0-3]):([0-5]\d)\s*$/;
 const cardFinalPattern = /\bfinal\s+(\d{4})\b/i;
-const installmentPattern = /\bparcela\s*(\d{1,2})\s*(?:de|\/)\s*(\d{1,2})\b/i;
 
 function normalizeLine(value: string) {
   return value.replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' ').trim();
@@ -103,7 +103,7 @@ function isDescriptionCandidate(line: string) {
   if (isSummaryOrNavigationLine(line)) return false;
   if (cardFinalPattern.test(line)) return false;
   if (timeOnlyPattern.test(line)) return false;
-  if (installmentPattern.test(line)) return false;
+  if (parseInstallment(line)) return false;
   if (numericDateOnlyPattern.test(line) || namedDatePattern.test(line)) return false;
   if (!/[a-zà-ÿ]/i.test(line)) return false;
   return true;
@@ -112,16 +112,15 @@ function isDescriptionCandidate(line: string) {
 function cleanDescription(line: string, amountText?: string) {
   let value = line;
   if (amountText) value = value.replace(amountText, ' ');
-  return value
+  return stripInstallment(value)
     .replace(/R\s*\$/gi, ' ')
     .replace(/\b\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?\b/g, ' ')
     .replace(namedDatePattern, ' ')
     .replace(cardFinalPattern, ' ')
-    .replace(installmentPattern, ' ')
     .replace(/\b(?:[01]?\d|2[0-3]):[0-5]\d\b/g, ' ')
     .replace(/[|•›>]+/g, ' ')
     .replace(/\s{2,}/g, ' ')
-    .replace(/^[-–—:;,.\s]+|[-–—:;,.\s]+$/g, '')
+    .replace(/^[-–—:;.\s]+|[-–—:;.\s]+$/g, '')
     .trim();
 }
 
@@ -164,15 +163,17 @@ export function parseImageTransactionList(
 
   for (const line of lines) {
     const last = items[items.length - 1];
+    const amountMatches = [...line.matchAll(moneyPattern)];
+    moneyPattern.lastIndex = 0;
+    const hasAmount = amountMatches.length > 0;
+
     const named = namedDate(line, fallbackYear);
-    if (named && !moneyPattern.test(line)) {
+    if (named && !hasAmount) {
       currentDate = named;
       pendingDescription = '';
       afterItem = false;
-      moneyPattern.lastIndex = 0;
       continue;
     }
-    moneyPattern.lastIndex = 0;
 
     const numeric = numericDate(line, fallbackYear);
     if (numeric) {
@@ -187,22 +188,22 @@ export function parseImageTransactionList(
     }
 
     const time = line.match(timeOnlyPattern);
-    if (time && last && afterItem) {
+    if (!hasAmount && time && last && afterItem) {
       last.time = `${time[1].padStart(2, '0')}:${time[2]}`;
       appendSource(last, line);
       continue;
     }
 
     const cardFinal = line.match(cardFinalPattern);
-    if (cardFinal && last && afterItem) {
+    if (!hasAmount && cardFinal && last && afterItem) {
       last.cardLastDigits = cardFinal[1];
       appendSource(last, line);
       continue;
     }
 
-    const installment = line.match(installmentPattern);
-    if (installment && last && afterItem) {
-      last.installment = { current: Number(installment[1]), total: Number(installment[2]) };
+    const installment = parseInstallment(line);
+    if (!hasAmount && installment && last && afterItem) {
+      last.installment = installment;
       appendSource(last, line);
       continue;
     }
@@ -212,8 +213,6 @@ export function parseImageTransactionList(
       continue;
     }
 
-    const amountMatches = [...line.matchAll(moneyPattern)];
-    moneyPattern.lastIndex = 0;
     if (amountMatches.length) {
       const chosen = amountMatches[amountMatches.length - 1];
       const amount = Math.abs(currencyToNumber(chosen[1]));
@@ -229,7 +228,7 @@ export function parseImageTransactionList(
       }
 
       const directDate = inlineDate(line, fallbackYear);
-      const directInstallment = line.match(installmentPattern);
+      const directInstallment = parseInstallment(line);
       const directFinal = line.match(cardFinalPattern);
       const directTime = line.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
 
@@ -239,9 +238,7 @@ export function parseImageTransactionList(
         date: directDate || currentDate,
         time: directTime ? `${directTime[1].padStart(2, '0')}:${directTime[2]}` : undefined,
         cardLastDigits: directFinal?.[1],
-        installment: directInstallment
-          ? { current: Number(directInstallment[1]), total: Number(directInstallment[2]) }
-          : undefined,
+        installment: directInstallment,
         sourceLine: line,
       });
 

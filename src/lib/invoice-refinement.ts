@@ -1,7 +1,11 @@
 import type { ExtractedDocumentData, ExtractedDocumentItem } from '../types/finance';
+import {
+  parseInstallment,
+  stripInstallment,
+  validInstallment,
+} from './installment-parser';
 
 const moneyPattern = /(?:R\s*\$\s*)?(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})(-)?/gi;
-const installmentPattern = /\bparc(?:ela)?\s*(\d{1,2})\s*(?:de|\/)\s*(\d{1,2})\b/i;
 const datePattern = /\b(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?\b/;
 
 const paymentOrCreditPattern =
@@ -19,12 +23,11 @@ function currencyToNumber(value: string) {
 }
 
 export function normalizeInvoiceDescription(value: string) {
-  return value
+  return stripInstallment(value)
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(installmentPattern, ' ')
-    .replace(/\bparc(?:ela)?\b/g, ' ')
+    .replace(/\bparc(?:\.|ela)?\b/g, ' ')
     .replace(/\b(?:santo\s+antonio|santo\s+antoni|salvador|curitiba|sapeacu|amparo)\b/g, ' ')
     .replace(/\bbr\b/g, ' ')
     .replace(/[^a-z0-9]+/g, ' ')
@@ -54,11 +57,10 @@ function isNegativeAmount(line: string, match: RegExpMatchArray) {
 }
 
 function cleanDescription(line: string, amountText = '') {
-  return line
+  return stripInstallment(line)
     .replace(amountText, ' ')
     .replace(/R\s*\$/gi, ' ')
     .replace(datePattern, ' ')
-    .replace(installmentPattern, ' ')
     .replace(/\b(?:final|cart[aã]o\.?\s*n\.?)\s*\d{4}\b/gi, ' ')
     .replace(/\b(?:br|us)\b/gi, ' ')
     .replace(/[|•›>]+/g, ' ')
@@ -95,14 +97,12 @@ function parseItem(line: string, year: number, pendingDescription = '') {
     : cleanDescription(pendingDescription);
   if (!validDescription(description)) return undefined;
 
-  const installmentMatch = `${pendingDescription} ${line}`.match(installmentPattern);
+  const combinedText = `${pendingDescription} ${line}`;
   return {
     description,
     amount,
-    date: parseDate(`${pendingDescription} ${line}`, year),
-    installment: installmentMatch
-      ? { current: Number(installmentMatch[1]), total: Number(installmentMatch[2]) }
-      : undefined,
+    date: parseDate(combinedText, year),
+    installment: parseInstallment(combinedText),
     sourceLine: pendingDescription ? `${pendingDescription} | ${line}` : line,
   } satisfies ExtractedDocumentItem;
 }
@@ -132,17 +132,49 @@ function deduplicate(items: ExtractedDocumentItem[]) {
   });
 }
 
+function enrichDuplicate(
+  primary: ExtractedDocumentItem,
+  fallback: ExtractedDocumentItem,
+): ExtractedDocumentItem {
+  const primaryInstallment = validInstallment(primary.installment)
+    ? primary.installment
+    : undefined;
+  const fallbackInstallment = validInstallment(fallback.installment)
+    ? fallback.installment
+    : parseInstallment(`${fallback.description} ${fallback.sourceLine || ''}`);
+  const sourceInstallment = parseInstallment(`${primary.description} ${primary.sourceLine || ''}`);
+
+  return {
+    ...primary,
+    date: primary.date || fallback.date,
+    time: primary.time || fallback.time,
+    cardLastDigits: primary.cardLastDigits || fallback.cardLastDigits,
+    installment: sourceInstallment || primaryInstallment || fallbackInstallment,
+    sourceLine: primary.sourceLine || fallback.sourceLine,
+  };
+}
+
 function merge(primary: ExtractedDocumentItem[], fallback: ExtractedDocumentItem[]) {
   const output = [...primary];
   for (const item of fallback) {
     const normalized = normalizeInvoiceDescription(item.description);
-    const duplicate = output.some(
+    const duplicateIndex = output.findIndex(
       (existing) =>
         normalizeInvoiceDescription(existing.description) === normalized &&
         Math.abs(existing.amount - item.amount) < 0.01 &&
         (!existing.date || !item.date || existing.date === item.date),
     );
-    if (!duplicate) output.push(item);
+
+    if (duplicateIndex >= 0) {
+      output[duplicateIndex] = enrichDuplicate(output[duplicateIndex], item);
+    } else {
+      output.push({
+        ...item,
+        installment:
+          parseInstallment(`${item.description} ${item.sourceLine || ''}`) ||
+          (validInstallment(item.installment) ? item.installment : undefined),
+      });
+    }
   }
   return deduplicate(output);
 }
