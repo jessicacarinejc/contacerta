@@ -135,6 +135,8 @@ export interface FinanceSettings {
   pixHolderName?: string;
   pixInstitution?: string;
   pixCity?: string;
+  pixPayload?: string;
+  pixQrCodeImage?: string;
   showPixInThirdPartyReports?: boolean;
   includePixQrCode?: boolean;
 }
