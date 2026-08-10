@@ -41,9 +41,9 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_file_access::init())
-        .setup(|app| {
+        .setup(|_app| {
             #[cfg(mobile)]
-            app.handle().plugin(tauri_plugin_biometric::init())?;
+            _app.handle().plugin(tauri_plugin_biometric::init())?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![platform_info, secure_hash, health_check])
