@@ -1,8 +1,8 @@
 import { FormEvent, useState } from 'react';
-import { Camera, KeyRound, Landmark, Save, UserRound } from 'lucide-react';
+import { Camera, ClipboardPaste, KeyRound, Landmark, Save, UserRound } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useFinanceStore } from '../store/useFinanceStore';
-import { sanitizePixKey } from '../lib/pix';
+import { detectPixKeyType, parsePixPayload, sanitizePixKey } from '../lib/pix';
 import type { PixKeyType } from '../types/finance';
 
 async function optimizeAvatar(file: File) {
@@ -37,6 +37,7 @@ export function ProfilePage() {
   const [pixHolderName, setPixHolderName] = useState(settings.pixHolderName || user.name);
   const [pixInstitution, setPixInstitution] = useState(settings.pixInstitution || '');
   const [pixCity, setPixCity] = useState(settings.pixCity || 'Salvador');
+  const [pixCopyPaste, setPixCopyPaste] = useState('');
   const [showPixInReports, setShowPixInReports] = useState(
     settings.showPixInThirdPartyReports ?? true,
   );
@@ -62,6 +63,21 @@ export function ProfilePage() {
       };
       reader.readAsDataURL(file);
     }
+  }
+
+  function importPixCopyPaste() {
+    const parsed = parsePixPayload(pixCopyPaste);
+    if (!parsed) {
+      setMessage('Não foi possível reconhecer o PIX Copia e Cola informado.');
+      return;
+    }
+
+    const keyType = detectPixKeyType(parsed.key);
+    setPixKeyType(keyType);
+    setPixKey(sanitizePixKey(parsed.key, keyType));
+    if (parsed.merchantName) setPixHolderName(parsed.merchantName);
+    if (parsed.merchantCity) setPixCity(parsed.merchantCity);
+    setMessage('PIX reconhecido. Confira os dados abaixo e clique em Salvar dados PIX.');
   }
 
   function saveProfile(event: FormEvent<HTMLFormElement>) {
@@ -97,6 +113,7 @@ export function ProfilePage() {
       includePixQrCode,
     });
     setPixKey(normalizedKey);
+    setPixCopyPaste('');
     setMessage('Dados PIX salvos. Eles poderão ser incluídos nos relatórios para terceiros.');
   }
 
@@ -163,6 +180,24 @@ export function ProfilePage() {
               <p>Configure o PIX que poderá aparecer nos relatórios enviados a terceiros.</p>
             </div>
           </div>
+
+          <label>
+            PIX Copia e Cola
+            <textarea
+              rows={3}
+              value={pixCopyPaste}
+              onChange={(event) => setPixCopyPaste(event.target.value)}
+              placeholder="Cole aqui um PIX Copia e Cola para preencher a chave, titular e cidade automaticamente"
+            />
+          </label>
+          <button
+            className="button button-secondary"
+            type="button"
+            onClick={importPixCopyPaste}
+            disabled={!pixCopyPaste.trim()}
+          >
+            <ClipboardPaste size={16} /> Importar dados do PIX
+          </button>
 
           <label>
             Tipo da chave PIX
