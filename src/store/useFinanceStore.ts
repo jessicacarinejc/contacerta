@@ -60,6 +60,7 @@ interface FinanceState {
     categoryId?: string,
     thirdParty?: string,
     thirdPartiesByItem?: Record<number, string>,
+    cardId?: string,
   ) => boolean;
   updateSettings: (patch: Partial<FinanceSettings>) => void;
   clearFinancialData: () => void;
@@ -73,6 +74,13 @@ const defaultSettings: FinanceSettings = {
   monthlyIncomeGoal: 20_000,
   emergencyReserveMonths: 6,
   notificationsEnabled: true,
+  pixKeyType: 'cpf',
+  pixKey: '',
+  pixHolderName: '',
+  pixInstitution: '',
+  pixCity: 'Salvador',
+  showPixInThirdPartyReports: true,
+  includePixQrCode: true,
 };
 
 function sameInstallmentTransaction(
@@ -89,6 +97,11 @@ function sameInstallmentTransaction(
     normalizeInvoiceDescription(transaction.description) ===
       normalizeInvoiceDescription(description)
   );
+}
+
+function matchCardByDigits(cards: CreditCard[], digits?: string) {
+  if (!digits) return undefined;
+  return cards.find((card) => card.lastDigits === digits);
 }
 
 export const useFinanceStore = create<FinanceState>()(
@@ -234,7 +247,7 @@ export const useFinanceStore = create<FinanceState>()(
         }));
       },
 
-      approveDocument(id, accountId, categoryId, thirdParty, thirdPartiesByItem) {
+      approveDocument(id, accountId, categoryId, thirdParty, thirdPartiesByItem, cardId) {
         const state = get();
         const document = state.documents.find((item) => item.id === id);
         if (!document?.extracted || document.status === 'approved') return false;
@@ -251,14 +264,29 @@ export const useFinanceStore = create<FinanceState>()(
 
         const extracted = document.extracted;
         const dueDate = extracted.dueDate;
+        const invoiceMonth = dueDate?.slice(0, 7);
         const invoiceItems =
           extracted.documentType === 'invoice'
             ? (extracted.items || []).filter((item) => item.amount > 0 && item.description.trim())
             : [];
         const normalizedThirdParty = thirdParty?.trim() || undefined;
+        const manuallySelectedCard = cardId
+          ? state.cards.find((card) => card.id === cardId)
+          : undefined;
+        const detectedCardIds = [
+          ...new Set(
+            invoiceItems
+              .map((item) => matchCardByDigits(state.cards, item.cardLastDigits)?.id)
+              .filter((value): value is string => Boolean(value)),
+          ),
+        ];
+        const documentCard =
+          manuallySelectedCard ||
+          (detectedCardIds.length === 1
+            ? state.cards.find((card) => card.id === detectedCardIds[0])
+            : undefined);
 
         if (extracted.documentType === 'invoice' && invoiceItems.length === 0) {
-          // Segurança: uma fatura nunca vira um único lançamento pelo total.
           return false;
         }
 
@@ -266,6 +294,7 @@ export const useFinanceStore = create<FinanceState>()(
           invoiceItems.forEach((item, index) => {
             const itemThirdParty =
               thirdPartiesByItem?.[index]?.trim() || normalizedThirdParty || undefined;
+            const itemCard = matchCardByDigits(state.cards, item.cardLastDigits) || documentCard;
             const projectedCurrent = item.installment
               ? get().transactions.find(
                   (transaction) =>
@@ -292,6 +321,8 @@ export const useFinanceStore = create<FinanceState>()(
                 futureInstallment: false,
                 notes: `Parcela confirmada pela fatura ${document.name}. Pagamentos, créditos, saldos e limites foram ignorados.`,
                 documentId: id,
+                cardId: itemCard?.id || projectedCurrent.cardId,
+                cardInvoiceMonth: invoiceMonth || projectedCurrent.cardInvoiceMonth,
               });
             } else {
               get().addTransaction({
@@ -307,6 +338,8 @@ export const useFinanceStore = create<FinanceState>()(
                 thirdParty: itemThirdParty,
                 notes: `Despesa importada da fatura ${document.name}. Pagamentos, créditos, saldos e limites foram ignorados.`,
                 documentId: id,
+                cardId: itemCard?.id,
+                cardInvoiceMonth: invoiceMonth,
               });
             }
 
@@ -337,6 +370,8 @@ export const useFinanceStore = create<FinanceState>()(
                   thirdParty: itemThirdParty || existingFuture.thirdParty,
                   notes: `Parcela futura atualizada a partir da fatura ${document.name}.`,
                   documentId: id,
+                  cardId: itemCard?.id || existingFuture.cardId,
+                  cardInvoiceMonth: future.dueDate.slice(0, 7),
                 });
               } else {
                 get().addTransaction({
@@ -353,6 +388,8 @@ export const useFinanceStore = create<FinanceState>()(
                   futureInstallment: true,
                   notes: `Parcela futura projetada a partir da fatura ${document.name}.`,
                   documentId: id,
+                  cardId: itemCard?.id,
+                  cardInvoiceMonth: future.dueDate.slice(0, 7),
                 });
               }
             }
