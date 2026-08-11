@@ -7,6 +7,7 @@ import './styles-responsive.css';
 import './entity-controls.css';
 import './branding.css';
 import './auth-theme.css';
+import './login-fixes.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
