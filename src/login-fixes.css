@@ -1,0 +1,48 @@
+.auth-mobile-brand {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .auth-mobile-brand {
+    width: min(300px, 82vw);
+    min-height: 88px;
+    margin: 0 auto 24px;
+    padding: 12px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    box-sizing: border-box;
+    border: 1px solid rgba(9, 33, 68, 0.08);
+    border-radius: 18px;
+    background: #ffffff;
+    box-shadow: 0 10px 26px rgba(1, 12, 29, 0.12);
+  }
+
+  .auth-mobile-logo {
+    display: block;
+    width: 100%;
+    max-width: 264px;
+    height: auto;
+    max-height: 86px;
+    margin: 0;
+    padding: 0;
+    object-fit: contain;
+    object-position: center;
+  }
+}
+
+@media (max-width: 560px) {
+  .auth-mobile-brand {
+    width: min(270px, 78vw);
+    min-height: 78px;
+    margin-bottom: 20px;
+    padding: 10px 14px;
+    border-radius: 16px;
+  }
+
+  .auth-mobile-logo {
+    max-width: 238px;
+    max-height: 74px;
+  }
+}
