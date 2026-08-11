@@ -3,7 +3,11 @@ import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
 import { useMemo, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
-import { BalanceChart, CategoryChart, IncomeExpenseChart } from '../components/charts/FinanceCharts';
+import {
+  BalanceChart,
+  CategoryChart,
+  IncomeExpenseChart,
+} from '../components/charts/FinanceCharts';
 import { Button, Card, CardHeader } from '../components/ui';
 import { toCurrency } from '../lib/currency';
 import { categoryTotals, monthTransactions, totals } from '../lib/finance';
@@ -43,6 +47,14 @@ function formattedPixKey(key: string, type?: string) {
   return key;
 }
 
+function pdfImageFormat(dataUrl: string) {
+  if (dataUrl.startsWith('data:image/jpeg') || dataUrl.startsWith('data:image/jpg')) {
+    return 'JPEG';
+  }
+  if (dataUrl.startsWith('data:image/webp')) return 'WEBP';
+  return 'PNG';
+}
+
 export function ReportsPage() {
   const { transactions, categories, settings } = useFinanceStore();
   const current = monthTransactions(transactions.filter((item) => !item.futureInstallment));
@@ -65,7 +77,9 @@ export function ReportsPage() {
   const thirdPartyPending = thirdPartyTransactions
     .filter((item) => item.status !== 'paid' || item.futureInstallment)
     .reduce((sum, item) => sum + item.amount, 0);
-  const pixConfigured = Boolean(settings.pixKey?.trim());
+  const pixConfigured = Boolean(
+    settings.pixKey?.trim() || settings.pixPayload?.trim() || settings.pixQrCodeImage?.trim(),
+  );
 
   async function exportPdf() {
     const pdf = new jsPDF();
@@ -168,27 +182,39 @@ export function ReportsPage() {
         y += 20;
       }
 
-      if (includePix && pixConfigured && settings.pixKey) {
-        if (y > 205) {
+      if (includePix && pixConfigured) {
+        if (y > 200) {
           pdf.addPage();
           y = await addBrandedHeader(pdf, title, 'Dados para pagamento');
         }
 
-        const normalizedKey = sanitizePixKey(settings.pixKey, settings.pixKeyType);
-        const payload = buildPixPayload({
-          key: normalizedKey,
-          merchantName: settings.pixHolderName || settings.userName,
-          merchantCity: settings.pixCity || 'Salvador',
-          amount: thirdPartyTotal,
-          description: selectedName ? `Reembolso ${selectedName}` : 'Reembolso Conta Certa',
-          transactionId: reportId.replace(/[^A-Za-z0-9]/g, '').slice(-25),
-        });
-        const qrDataUrl =
-          includeQrCode && payload
-            ? await QRCode.toDataURL(payload, { errorCorrectionLevel: 'M', margin: 1, width: 360 })
-            : undefined;
+        const normalizedKey = settings.pixKey
+          ? sanitizePixKey(settings.pixKey, settings.pixKeyType)
+          : '';
+        const generatedPayload = normalizedKey
+          ? buildPixPayload({
+              key: normalizedKey,
+              merchantName: settings.pixHolderName || settings.userName,
+              merchantCity: settings.pixCity || 'Salvador',
+              amount: thirdPartyTotal,
+              description: selectedName ? `Reembolso ${selectedName}` : 'Reembolso Conta Certa',
+              transactionId: reportId.replace(/[^A-Za-z0-9]/g, '').slice(-25),
+            })
+          : '';
+        const payload = settings.pixPayload?.trim() || generatedPayload;
+        const uploadedQr = settings.pixQrCodeImage?.trim();
+        const qrDataUrl = includeQrCode
+          ? uploadedQr ||
+            (payload
+              ? await QRCode.toDataURL(payload, {
+                  errorCorrectionLevel: 'M',
+                  margin: 1,
+                  width: 360,
+                })
+              : undefined)
+          : undefined;
 
-        const boxHeight = qrDataUrl ? 76 : 58;
+        const boxHeight = qrDataUrl ? 84 : payload ? 68 : 54;
         pdf.setFillColor('#F3FAF5');
         pdf.setDrawColor('#279B48');
         pdf.roundedRect(15, y, 180, boxHeight, 2, 2, 'FD');
@@ -197,27 +223,41 @@ export function ReportsPage() {
         pdf.setFontSize(12);
         pdf.text('Pagamento via PIX', 20, y + 10);
         pdf.setFontSize(9);
-        pdf.text(`Valor: ${toCurrency(thirdPartyTotal)}`, 20, y + 19);
+        pdf.text(`Valor do relatório: ${toCurrency(thirdPartyTotal)}`, 20, y + 19);
         pdf.setFont('helvetica', 'normal');
         pdf.text(`Titular: ${settings.pixHolderName || settings.userName}`, 20, y + 27);
-        pdf.text(
-          `Chave PIX (${(settings.pixKeyType || 'chave').toUpperCase()}): ${formattedPixKey(normalizedKey, settings.pixKeyType)}`,
-          20,
-          y + 35,
-        );
+
+        let detailY = y + 35;
+        if (normalizedKey) {
+          pdf.text(
+            `Chave PIX (${(settings.pixKeyType || 'chave').toUpperCase()}): ${formattedPixKey(normalizedKey, settings.pixKeyType)}`,
+            20,
+            detailY,
+          );
+          detailY += 8;
+        }
         if (settings.pixInstitution) {
-          pdf.text(`Instituição: ${settings.pixInstitution}`, 20, y + 43);
+          pdf.text(`Instituição: ${settings.pixInstitution}`, 20, detailY);
+          detailY += 8;
         }
 
         if (qrDataUrl) {
-          pdf.addImage(qrDataUrl, 'PNG', 153, y + 8, 34, 34);
+          pdf.addImage(qrDataUrl, pdfImageFormat(qrDataUrl), 148, y + 8, 40, 40);
         }
 
-        pdf.setFontSize(7.2);
-        pdf.setTextColor('#475467');
-        pdf.text('PIX Copia e Cola:', 20, y + 50);
-        const payloadLines = pdf.splitTextToSize(payload, qrDataUrl ? 126 : 165) as string[];
-        pdf.text(payloadLines.slice(0, qrDataUrl ? 5 : 7), 20, y + 55);
+        if (payload) {
+          pdf.setFontSize(7.2);
+          pdf.setTextColor('#475467');
+          const copyPasteY = Math.max(detailY + 2, y + 50);
+          pdf.text('PIX Copia e Cola:', 20, copyPasteY);
+          const payloadLines = pdf.splitTextToSize(payload, qrDataUrl ? 120 : 165) as string[];
+          pdf.text(payloadLines.slice(0, qrDataUrl ? 5 : 7), 20, copyPasteY + 5);
+        } else if (qrDataUrl) {
+          pdf.setFontSize(7.5);
+          pdf.setTextColor('#475467');
+          pdf.text('Escaneie o QR Code para realizar o pagamento.', 20, detailY + 4);
+        }
+
         y += boxHeight + 6;
       }
 
@@ -267,20 +307,40 @@ export function ReportsPage() {
       />
 
       <div className="summary-strip">
-        <Card><small>Receitas</small><strong>{toCurrency(summary.income)}</strong></Card>
-        <Card><small>Despesas</small><strong>{toCurrency(summary.expense)}</strong></Card>
-        <Card><small>Resultado</small><strong>{toCurrency(summary.result)}</strong></Card>
+        <Card>
+          <small>Receitas</small>
+          <strong>{toCurrency(summary.income)}</strong>
+        </Card>
+        <Card>
+          <small>Despesas</small>
+          <strong>{toCurrency(summary.expense)}</strong>
+        </Card>
+        <Card>
+          <small>Resultado</small>
+          <strong>{toCurrency(summary.result)}</strong>
+        </Card>
       </div>
 
       <div className="report-grid">
-        <Card className="span-2"><CardHeader title="Desempenho financeiro" /><IncomeExpenseChart /></Card>
-        <Card><CardHeader title="Categorias" /><CategoryChart data={data} /></Card>
-        <Card className="span-2"><CardHeader title="Evolução do saldo" /><BalanceChart /></Card>
+        <Card className="span-2">
+          <CardHeader title="Desempenho financeiro" />
+          <IncomeExpenseChart />
+        </Card>
+        <Card>
+          <CardHeader title="Categorias" />
+          <CategoryChart data={data} />
+        </Card>
+        <Card className="span-2">
+          <CardHeader title="Evolução do saldo" />
+          <BalanceChart />
+        </Card>
         <Card>
           <div className="feature-callout vertical">
             <FileText />
             <h3>Relatório auditável</h3>
-            <p>Os filtros e exportações preservam competência, caixa, conta, categoria e situação.</p>
+            <p>
+              Os filtros e exportações preservam competência, caixa, conta, categoria e situação.
+            </p>
           </div>
         </Card>
       </div>
@@ -296,7 +356,11 @@ export function ReportsPage() {
             }}
           >
             <option value="">Todos os terceiros</option>
-            {thirdParties.map((name) => <option key={name} value={name}>{name}</option>)}
+            {thirdParties.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
           </select>
           <label className="checkbox-row">
             <input
@@ -327,17 +391,29 @@ export function ReportsPage() {
 
         {!pixConfigured && (
           <div className="processing-message">
-            Cadastre sua chave PIX em Perfil para incluí-la nos relatórios enviados a terceiros.
+            Cadastre sua chave, PIX Copia e Cola ou QR Code em Perfil para incluí-lo nos relatórios.
           </div>
         )}
 
         {reportMessage && <div className="processing-message">{reportMessage}</div>}
 
         <div className="summary-strip">
-          <Card><small>Lançamentos</small><strong>{thirdPartyTransactions.length}</strong></Card>
-          <Card><small>Realizado</small><strong>{toCurrency(thirdPartyPaid)}</strong></Card>
-          <Card><small>Pendente/futuro</small><strong>{toCurrency(thirdPartyPending)}</strong></Card>
-          <Card><small>Total</small><strong>{toCurrency(thirdPartyTotal)}</strong></Card>
+          <Card>
+            <small>Lançamentos</small>
+            <strong>{thirdPartyTransactions.length}</strong>
+          </Card>
+          <Card>
+            <small>Realizado</small>
+            <strong>{toCurrency(thirdPartyPaid)}</strong>
+          </Card>
+          <Card>
+            <small>Pendente/futuro</small>
+            <strong>{toCurrency(thirdPartyPending)}</strong>
+          </Card>
+          <Card>
+            <small>Total</small>
+            <strong>{toCurrency(thirdPartyTotal)}</strong>
+          </Card>
         </div>
 
         {thirdPartyTransactions.length > 0 && (
@@ -356,10 +432,20 @@ export function ReportsPage() {
               <tbody>
                 {thirdPartyTransactions.map((item) => (
                   <tr key={item.id}>
-                    <td>{new Date(`${item.dueDate || item.date}T12:00:00`).toLocaleDateString('pt-BR')}</td>
-                    <td><strong>{normalizeThirdPartyName(item.thirdParty)}</strong></td>
+                    <td>
+                      {new Date(`${item.dueDate || item.date}T12:00:00`).toLocaleDateString(
+                        'pt-BR',
+                      )}
+                    </td>
+                    <td>
+                      <strong>{normalizeThirdPartyName(item.thirdParty)}</strong>
+                    </td>
                     <td>{item.description}</td>
-                    <td>{item.installment ? `${item.installment.current}/${item.installment.total}` : '—'}</td>
+                    <td>
+                      {item.installment
+                        ? `${item.installment.current}/${item.installment.total}`
+                        : '—'}
+                    </td>
                     <td>{thirdPartyStatusLabel(item)}</td>
                     <td className="right amount expense">-{toCurrency(item.amount)}</td>
                   </tr>

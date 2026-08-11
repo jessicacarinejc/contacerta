@@ -1,5 +1,14 @@
-import { FormEvent, useState } from 'react';
-import { Camera, ClipboardPaste, KeyRound, Landmark, Save, UserRound } from 'lucide-react';
+import { FormEvent, useEffect, useState } from 'react';
+import {
+  Camera,
+  ClipboardPaste,
+  KeyRound,
+  Landmark,
+  QrCode,
+  Save,
+  Trash2,
+  UserRound,
+} from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useFinanceStore } from '../store/useFinanceStore';
 import { detectPixKeyType, parsePixPayload, sanitizePixKey } from '../lib/pix';
@@ -21,6 +30,15 @@ async function optimizeAvatar(file: File) {
   return canvas.toDataURL('image/webp', 0.82);
 }
 
+function readImageAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Não foi possível ler a imagem.'));
+    reader.readAsDataURL(file);
+  });
+}
+
 export function ProfilePage() {
   const user = useAuthStore((state) => state.user)!;
   const updateProfile = useAuthStore((state) => state.updateProfile);
@@ -37,12 +55,47 @@ export function ProfilePage() {
   const [pixHolderName, setPixHolderName] = useState(settings.pixHolderName || user.name);
   const [pixInstitution, setPixInstitution] = useState(settings.pixInstitution || '');
   const [pixCity, setPixCity] = useState(settings.pixCity || 'Salvador');
-  const [pixCopyPaste, setPixCopyPaste] = useState('');
+  const [pixCopyPaste, setPixCopyPaste] = useState(settings.pixPayload || '');
+  const [pixPayload, setPixPayload] = useState(settings.pixPayload || '');
+  const [pixQrCodeImage, setPixQrCodeImage] = useState(settings.pixQrCodeImage || '');
   const [showPixInReports, setShowPixInReports] = useState(
     settings.showPixInThirdPartyReports ?? true,
   );
   const [includePixQrCode, setIncludePixQrCode] = useState(settings.includePixQrCode ?? true);
   const [message, setMessage] = useState('');
+
+  // O armazenamento do Tauri/Zustand é assíncrono no Android. Sem esta sincronização,
+  // a tela podia montar com os valores padrão e continuar exibindo campos vazios mesmo
+  // depois de o estado persistido ter sido restaurado corretamente.
+  useEffect(() => {
+    setName(user.name);
+    setEmail(user.email);
+    setAvatar(user.avatar ?? '');
+  }, [user.name, user.email, user.avatar]);
+
+  useEffect(() => {
+    setPixKeyType(settings.pixKeyType || 'cpf');
+    setPixKey(settings.pixKey || '');
+    setPixHolderName(settings.pixHolderName || user.name);
+    setPixInstitution(settings.pixInstitution || '');
+    setPixCity(settings.pixCity || 'Salvador');
+    setPixCopyPaste(settings.pixPayload || '');
+    setPixPayload(settings.pixPayload || '');
+    setPixQrCodeImage(settings.pixQrCodeImage || '');
+    setShowPixInReports(settings.showPixInThirdPartyReports ?? true);
+    setIncludePixQrCode(settings.includePixQrCode ?? true);
+  }, [
+    settings.pixKeyType,
+    settings.pixKey,
+    settings.pixHolderName,
+    settings.pixInstitution,
+    settings.pixCity,
+    settings.pixPayload,
+    settings.pixQrCodeImage,
+    settings.showPixInThirdPartyReports,
+    settings.includePixQrCode,
+    user.name,
+  ]);
 
   async function readAvatar(file?: File) {
     if (!file) return;
@@ -56,17 +109,34 @@ export function ProfilePage() {
       setAvatar(optimized);
       setMessage('Foto preparada. Clique em Salvar perfil para gravá-la.');
     } catch {
-      const reader = new FileReader();
-      reader.onload = () => {
-        setAvatar(String(reader.result));
+      try {
+        setAvatar(await readImageAsDataUrl(file));
         setMessage('Foto preparada. Clique em Salvar perfil para gravá-la.');
-      };
-      reader.readAsDataURL(file);
+      } catch {
+        setMessage('Não foi possível carregar a foto selecionada.');
+      }
+    }
+  }
+
+  async function readPixQrCode(file?: File) {
+    if (!file) return;
+    if (file.size > 3 * 1024 * 1024) {
+      setMessage('A imagem do QR Code deve ter no máximo 3 MB.');
+      return;
+    }
+
+    try {
+      const dataUrl = await readImageAsDataUrl(file);
+      setPixQrCodeImage(dataUrl);
+      setMessage('QR Code preparado. Clique em Salvar dados PIX para gravá-lo.');
+    } catch {
+      setMessage('Não foi possível carregar a imagem do QR Code.');
     }
   }
 
   function importPixCopyPaste() {
-    const parsed = parsePixPayload(pixCopyPaste);
+    const cleanedPayload = pixCopyPaste.replace(/[\r\n\t]+/g, '').trim();
+    const parsed = parsePixPayload(cleanedPayload);
     if (!parsed) {
       setMessage('Não foi possível reconhecer o PIX Copia e Cola informado.');
       return;
@@ -75,6 +145,8 @@ export function ProfilePage() {
     const keyType = detectPixKeyType(parsed.key);
     setPixKeyType(keyType);
     setPixKey(sanitizePixKey(parsed.key, keyType));
+    setPixPayload(cleanedPayload);
+    setPixCopyPaste(cleanedPayload);
     if (parsed.merchantName) setPixHolderName(parsed.merchantName);
     if (parsed.merchantCity) setPixCity(parsed.merchantCity);
     setMessage('PIX reconhecido. Confira os dados abaixo e clique em Salvar dados PIX.');
@@ -90,15 +162,15 @@ export function ProfilePage() {
   function savePix(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const normalizedKey = sanitizePixKey(pixKey, pixKeyType);
-    if (!normalizedKey) {
-      setMessage('Informe a chave PIX antes de salvar os dados de recebimento.');
+    if (!normalizedKey && !pixPayload && !pixQrCodeImage) {
+      setMessage('Informe uma chave PIX, um PIX Copia e Cola ou uma imagem do QR Code.');
       return;
     }
-    if (pixKeyType === 'cpf' && normalizedKey.length !== 11) {
+    if (normalizedKey && pixKeyType === 'cpf' && normalizedKey.length !== 11) {
       setMessage('A chave PIX do tipo CPF deve possuir 11 dígitos.');
       return;
     }
-    if (pixKeyType === 'cnpj' && normalizedKey.length !== 14) {
+    if (normalizedKey && pixKeyType === 'cnpj' && normalizedKey.length !== 14) {
       setMessage('A chave PIX do tipo CNPJ deve possuir 14 dígitos.');
       return;
     }
@@ -109,12 +181,14 @@ export function ProfilePage() {
       pixHolderName: pixHolderName.trim() || name.trim(),
       pixInstitution: pixInstitution.trim(),
       pixCity: pixCity.trim() || 'Salvador',
+      pixPayload: pixPayload.trim(),
+      pixQrCodeImage,
       showPixInThirdPartyReports: showPixInReports,
       includePixQrCode,
     });
     setPixKey(normalizedKey);
-    setPixCopyPaste('');
-    setMessage('Dados PIX salvos. Eles poderão ser incluídos nos relatórios para terceiros.');
+    setPixCopyPaste(pixPayload.trim());
+    setMessage('Dados PIX e QR Code salvos com sucesso para uso nos relatórios.');
   }
 
   async function savePassword(event: FormEvent<HTMLFormElement>) {
@@ -165,7 +239,12 @@ export function ProfilePage() {
           </label>
           <label>
             E-mail
-            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
           </label>
           <button className="button button-primary" type="submit">
             <Save size={16} /> Salvar perfil
@@ -177,7 +256,7 @@ export function ProfilePage() {
             <Landmark />
             <div>
               <h2>Dados para recebimento</h2>
-              <p>Configure o PIX que poderá aparecer nos relatórios enviados a terceiros.</p>
+              <p>Configure o PIX e o QR Code que poderão aparecer nos relatórios para terceiros.</p>
             </div>
           </div>
 
@@ -186,7 +265,10 @@ export function ProfilePage() {
             <textarea
               rows={3}
               value={pixCopyPaste}
-              onChange={(event) => setPixCopyPaste(event.target.value)}
+              onChange={(event) => {
+                setPixCopyPaste(event.target.value);
+                setPixPayload('');
+              }}
               placeholder="Cole aqui um PIX Copia e Cola para preencher a chave, titular e cidade automaticamente"
             />
           </label>
@@ -201,7 +283,13 @@ export function ProfilePage() {
 
           <label>
             Tipo da chave PIX
-            <select value={pixKeyType} onChange={(event) => setPixKeyType(event.target.value as PixKeyType)}>
+            <select
+              value={pixKeyType}
+              onChange={(event) => {
+                setPixKeyType(event.target.value as PixKeyType);
+                setPixPayload('');
+              }}
+            >
               <option value="cpf">CPF</option>
               <option value="cnpj">CNPJ</option>
               <option value="phone">Telefone</option>
@@ -213,15 +301,21 @@ export function ProfilePage() {
             Chave PIX
             <input
               value={pixKey}
-              onChange={(event) => setPixKey(event.target.value)}
+              onChange={(event) => {
+                setPixKey(event.target.value);
+                setPixPayload('');
+              }}
               placeholder={pixKeyType === 'cpf' ? '000.000.000-00' : 'Informe sua chave PIX'}
               autoComplete="off"
-              required
             />
           </label>
           <label>
             Titular
-            <input value={pixHolderName} onChange={(event) => setPixHolderName(event.target.value)} required />
+            <input
+              value={pixHolderName}
+              onChange={(event) => setPixHolderName(event.target.value)}
+              required
+            />
           </label>
           <label>
             Instituição financeira
@@ -235,6 +329,41 @@ export function ProfilePage() {
             Cidade do titular
             <input value={pixCity} onChange={(event) => setPixCity(event.target.value)} required />
           </label>
+
+          <div className="profile-section-title">
+            <QrCode />
+            <div>
+              <h2>QR Code do PIX</h2>
+              <p>Você pode anexar o QR Code do banco para ele aparecer diretamente no relatório.</p>
+            </div>
+          </div>
+          {pixQrCodeImage && (
+            <div className="profile-avatar-editor">
+              <div className="profile-avatar-large">
+                <img src={pixQrCodeImage} alt="QR Code PIX cadastrado" />
+              </div>
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={() => {
+                  setPixQrCodeImage('');
+                  setMessage('QR Code removido. Clique em Salvar dados PIX para confirmar.');
+                }}
+              >
+                <Trash2 size={16} /> Remover QR Code
+              </button>
+            </div>
+          )}
+          <label className="button button-secondary">
+            <QrCode size={16} /> {pixQrCodeImage ? 'Trocar QR Code' : 'Adicionar QR Code'}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              hidden
+              onChange={(event) => void readPixQrCode(event.target.files?.[0])}
+            />
+          </label>
+
           <label className="checkbox-row">
             <input
               type="checkbox"

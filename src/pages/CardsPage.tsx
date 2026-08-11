@@ -1,4 +1,4 @@
-import { CreditCard, FileText, GaugeCircle, Plus, ReceiptText } from 'lucide-react';
+import { CreditCard, FileText, GaugeCircle, Pencil, Plus, ReceiptText } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { Button, Card, CardHeader, Modal, Progress } from '../components/ui';
@@ -19,7 +19,9 @@ export function CardsPage() {
   const documents = useFinanceStore((state) => state.documents);
   const accounts = useFinanceStore((state) => state.accounts);
   const addCard = useFinanceStore((state) => state.addCard);
+  const updateCard = useFinanceStore((state) => state.updateCard);
   const [open, setOpen] = useState(false);
+  const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [institution, setInstitution] = useState('');
@@ -57,6 +59,7 @@ export function CardsPage() {
 
   function closeModal() {
     setOpen(false);
+    setEditingCardId(null);
     setError('');
   }
 
@@ -75,26 +78,50 @@ export function CardsPage() {
     setError('');
   }
 
+  function openNewCard() {
+    resetForm();
+    setEditingCardId(null);
+    setOpen(true);
+  }
+
+  function openEditCard(card: (typeof cards)[number]) {
+    setEditingCardId(card.id);
+    setName(card.name);
+    setInstitution(card.institution);
+    setBrand(card.brand || '');
+    setHolder(card.holder || '');
+    setLastDigits(card.lastDigits);
+    setLimit(String(card.limit));
+    setUsed(String(card.used || 0));
+    setClosingDay(String(card.closingDay));
+    setDueDay(String(card.dueDay));
+    setPaymentAccountId(card.paymentAccountId || '');
+    setColor(card.color || cardColors[0]);
+    setError('');
+    setOpen(true);
+  }
+
   return (
     <div className="page">
       <PageHeader
         title="Cartões"
         description="Faturas, limites, parcelas e despesas separadas por cartão."
         action={
-          <Button
-            onClick={() => {
-              resetForm();
-              setOpen(true);
-            }}
-          >
+          <Button onClick={openNewCard}>
             <Plus size={17} /> Novo cartão
           </Button>
         }
       />
 
       <div className="summary-strip">
-        <Card><small>Cartões cadastrados</small><strong>{cards.length}</strong></Card>
-        <Card><small>Faturas em aberto</small><strong>{toCurrency(totalOpenInvoices)}</strong></Card>
+        <Card>
+          <small>Cartões cadastrados</small>
+          <strong>{cards.length}</strong>
+        </Card>
+        <Card>
+          <small>Faturas em aberto</small>
+          <strong>{toCurrency(totalOpenInvoices)}</strong>
+        </Card>
         <Card>
           <small>Parcelas futuras</small>
           <strong>{toCurrency(cardViews.reduce((sum, view) => sum + view.futureCommitment, 0))}</strong>
@@ -115,7 +142,10 @@ export function CardsPage() {
                   <span>{card.institution || 'Conta Certa'}</span>
                 </div>
                 <strong>•••• •••• •••• {card.lastDigits}</strong>
-                <small>{card.name}{card.brand ? ` · ${card.brand}` : ''}</small>
+                <small>
+                  {card.name}
+                  {card.brand ? ` · ${card.brand}` : ''}
+                </small>
               </div>
               <div className="card-stats">
                 <div>
@@ -129,12 +159,20 @@ export function CardsPage() {
                 </div>
                 <Progress value={usagePercent} label={`${Math.round(usagePercent)}% utilizado`} />
                 <div className="card-dates">
-                  <span>Fecha <b>{card.closingDay}</b></span>
-                  <span>Vence <b>{card.dueDay}</b></span>
+                  <span>
+                    Fecha <b>{card.closingDay}</b>
+                  </span>
+                  <span>
+                    Vence <b>{card.dueDay}</b>
+                  </span>
                 </div>
                 <div className="card-dates">
-                  <span>Próxima fatura <b>{toCurrency(nextInvoice?.amount || 0)}</b></span>
-                  <span>Parcelas futuras <b>{toCurrency(futureCommitment)}</b></span>
+                  <span>
+                    Próxima fatura <b>{toCurrency(nextInvoice?.amount || 0)}</b>
+                  </span>
+                  <span>
+                    Parcelas futuras <b>{toCurrency(futureCommitment)}</b>
+                  </span>
                 </div>
                 <Button
                   type="button"
@@ -143,6 +181,9 @@ export function CardsPage() {
                 >
                   <ReceiptText size={16} />
                   {selectedCardId === card.id ? 'Fechar detalhes' : 'Ver faturas e despesas'}
+                </Button>
+                <Button type="button" variant="secondary" onClick={() => openEditCard(card)}>
+                  <Pencil size={16} /> Editar cartão
                 </Button>
               </div>
             </Card>
@@ -173,7 +214,9 @@ export function CardsPage() {
               <FileText />
               <div>
                 <h3>Nenhuma despesa vinculada ainda</h3>
-                <p>Ao importar uma fatura com o final deste cartão, as compras aparecerão aqui automaticamente.</p>
+                <p>
+                  Ao importar uma fatura com o final deste cartão, as compras aparecerão aqui automaticamente.
+                </p>
               </div>
             </div>
           ) : (
@@ -191,11 +234,15 @@ export function CardsPage() {
                 <tbody>
                   {selectedView.invoices.map((invoice) => (
                     <tr key={invoice.month}>
-                      <td><strong>{formatInvoiceMonth(invoice.month)}</strong></td>
+                      <td>
+                        <strong>{formatInvoiceMonth(invoice.month)}</strong>
+                      </td>
                       <td>{invoice.transactions.length}</td>
                       <td className="right">{toCurrency(invoice.paid)}</td>
                       <td className="right">{toCurrency(invoice.pending)}</td>
-                      <td className="right"><strong>{toCurrency(invoice.amount)}</strong></td>
+                      <td className="right">
+                        <strong>{toCurrency(invoice.amount)}</strong>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -220,9 +267,21 @@ export function CardsPage() {
                     <tr key={item.id}>
                       <td>{new Date(`${item.date}T12:00:00`).toLocaleDateString('pt-BR')}</td>
                       <td>{item.description}</td>
-                      <td>{item.installment ? `${item.installment.current}/${item.installment.total}` : '—'}</td>
-                      <td>{item.status === 'paid' ? 'Realizado' : item.futureInstallment ? 'Futuro' : 'Pendente'}</td>
-                      <td className="right"><strong>{toCurrency(item.amount)}</strong></td>
+                      <td>
+                        {item.installment
+                          ? `${item.installment.current}/${item.installment.total}`
+                          : '—'}
+                      </td>
+                      <td>
+                        {item.status === 'paid'
+                          ? 'Realizado'
+                          : item.futureInstallment
+                            ? 'Futuro'
+                            : 'Pendente'}
+                      </td>
+                      <td className="right">
+                        <strong>{toCurrency(item.amount)}</strong>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -237,12 +296,18 @@ export function CardsPage() {
           <GaugeCircle />
           <div>
             <h3>Sem duplicidade</h3>
-            <p>As compras ficam vinculadas ao cartão e à fatura; o pagamento da fatura continua sendo apenas a liquidação da obrigação.</p>
+            <p>
+              As compras ficam vinculadas ao cartão e à fatura; o pagamento da fatura continua sendo apenas a liquidação da obrigação.
+            </p>
           </div>
         </div>
       </Card>
 
-      <Modal open={open} onClose={closeModal} title="Novo cartão de crédito">
+      <Modal
+        open={open}
+        onClose={closeModal}
+        title={editingCardId ? 'Editar cartão de crédito' : 'Novo cartão de crédito'}
+      >
         <form
           className="form-grid"
           onSubmit={(event) => {
@@ -258,7 +323,14 @@ export function CardsPage() {
               setError('Informe exatamente os 4 últimos dígitos do cartão.');
               return;
             }
-            if (cards.some((card) => card.lastDigits === lastDigits && card.institution.toLowerCase() === institution.trim().toLowerCase())) {
+            if (
+              cards.some(
+                (card) =>
+                  card.id !== editingCardId &&
+                  card.lastDigits === lastDigits &&
+                  card.institution.toLowerCase() === institution.trim().toLowerCase(),
+              )
+            ) {
               setError('Já existe um cartão desta instituição com os mesmos 4 últimos dígitos.');
               return;
             }
@@ -282,7 +354,7 @@ export function CardsPage() {
               return;
             }
 
-            addCard({
+            const cardData = {
               name: name.trim(),
               institution: institution.trim(),
               brand: brand.trim() || undefined,
@@ -293,27 +365,53 @@ export function CardsPage() {
               closingDay: parsedClosingDay,
               dueDay: parsedDueDay,
               paymentAccountId: paymentAccountId || undefined,
-              active: true,
+              active: editingCardId
+                ? (cards.find((card) => card.id === editingCardId)?.active ?? true)
+                : true,
               color,
-            });
+            };
+
+            if (editingCardId) {
+              updateCard(editingCardId, cardData);
+            } else {
+              addCard(cardData);
+            }
             closeModal();
           }}
         >
           <label>
             Nome do cartão
-            <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Visa Platinum" required />
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Ex.: Visa Platinum"
+              required
+            />
           </label>
           <label>
             Instituição
-            <input value={institution} onChange={(event) => setInstitution(event.target.value)} placeholder="Ex.: Banco do Brasil" required />
+            <input
+              value={institution}
+              onChange={(event) => setInstitution(event.target.value)}
+              placeholder="Ex.: Banco do Brasil"
+              required
+            />
           </label>
           <label>
             Bandeira
-            <input value={brand} onChange={(event) => setBrand(event.target.value)} placeholder="Ex.: Visa, Mastercard, Elo" />
+            <input
+              value={brand}
+              onChange={(event) => setBrand(event.target.value)}
+              placeholder="Ex.: Visa, Mastercard, Elo"
+            />
           </label>
           <label>
             Titular
-            <input value={holder} onChange={(event) => setHolder(event.target.value)} placeholder="Opcional" />
+            <input
+              value={holder}
+              onChange={(event) => setHolder(event.target.value)}
+              placeholder="Opcional"
+            />
           </label>
           <label>
             Últimos 4 dígitos
@@ -328,39 +426,83 @@ export function CardsPage() {
           </label>
           <label>
             Limite
-            <input type="number" min="0.01" step="0.01" value={limit} onChange={(event) => setLimit(event.target.value)} required />
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={limit}
+              onChange={(event) => setLimit(event.target.value)}
+              required
+            />
           </label>
           <label>
             Fatura atual inicial
-            <input type="number" min="0" step="0.01" value={used} onChange={(event) => setUsed(event.target.value)} />
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={used}
+              onChange={(event) => setUsed(event.target.value)}
+            />
           </label>
           <label>
             Conta padrão para pagamento
-            <select value={paymentAccountId} onChange={(event) => setPaymentAccountId(event.target.value)}>
+            <select
+              value={paymentAccountId}
+              onChange={(event) => setPaymentAccountId(event.target.value)}
+            >
               <option value="">Não definida</option>
-              {accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name}
+                </option>
+              ))}
             </select>
           </label>
           <label>
             Cor do cartão
             <select value={color} onChange={(event) => setColor(event.target.value)}>
-              {cardColors.map((option) => <option key={option} value={option}>{option}</option>)}
+              {cardColors.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
             </select>
           </label>
           <label>
             Dia de fechamento
-            <input type="number" min="1" max="31" value={closingDay} onChange={(event) => setClosingDay(event.target.value)} required />
+            <input
+              type="number"
+              min="1"
+              max="31"
+              value={closingDay}
+              onChange={(event) => setClosingDay(event.target.value)}
+              required
+            />
           </label>
           <label>
             Dia de vencimento
-            <input type="number" min="1" max="31" value={dueDay} onChange={(event) => setDueDay(event.target.value)} required />
+            <input
+              type="number"
+              min="1"
+              max="31"
+              value={dueDay}
+              onChange={(event) => setDueDay(event.target.value)}
+              required
+            />
           </label>
 
-          {error && <div className="form-error span-2" role="alert">{error}</div>}
+          {error && (
+            <div className="form-error span-2" role="alert">
+              {error}
+            </div>
+          )}
 
           <div className="form-actions span-2">
-            <Button type="button" variant="secondary" onClick={closeModal}>Cancelar</Button>
-            <Button type="submit">Salvar cartão</Button>
+            <Button type="button" variant="secondary" onClick={closeModal}>
+              Cancelar
+            </Button>
+            <Button type="submit">{editingCardId ? 'Salvar alterações' : 'Salvar cartão'}</Button>
           </div>
         </form>
       </Modal>
