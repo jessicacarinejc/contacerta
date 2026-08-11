@@ -34,12 +34,28 @@ export function LoginPage() {
       };
     }
 
-    void checkBiometricStatus().then((status) => {
+    async function refreshBiometricStatus() {
+      const status = await checkBiometricStatus();
       if (active) setBiometricStatus(status);
-    });
+    }
+
+    // No Android o plugin nativo pode terminar de inicializar logo após o WebView.
+    // Fazemos uma segunda checagem curta e também rechecamos quando o app volta ao foco.
+    void refreshBiometricStatus();
+    const retryTimer = window.setTimeout(() => void refreshBiometricStatus(), 700);
+    const handleFocus = () => void refreshBiometricStatus();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void refreshBiometricStatus();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       active = false;
+      window.clearTimeout(retryTimer);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [mode, user]);
 
@@ -99,7 +115,13 @@ export function LoginPage() {
 
       <section className="auth-panel">
         <div className="auth-card">
-          <img className="auth-mobile-logo" src="/branding/logo-full.svg" alt="Conta Certa" />
+          <div className="auth-mobile-brand" aria-label="Conta Certa — Gestão Financeira">
+            <img
+              className="auth-mobile-logo"
+              src="/branding/logo-horizontal.svg"
+              alt="Conta Certa — Gestão Financeira"
+            />
+          </div>
           <span className="auth-eyebrow">ACESSO SEGURO</span>
           <h2>{mode === 'login' ? 'Entrar na sua conta' : 'Criar perfil de usuário'}</h2>
           <p>
