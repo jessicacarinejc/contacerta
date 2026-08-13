@@ -31,9 +31,12 @@ const monthMap: Record<string, number> = {
 
 const moneyPattern = /(?:R\s*\$\s*)?(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})/gi;
 const namedDatePattern = /\b(\d{1,2})(?:\s+de)?\s+(jan(?:eiro)?|fev(?:ereiro)?|mar(?:ço|co)?|abr(?:il)?|mai(?:o)?|jun(?:ho)?|jul(?:ho)?|ago(?:sto)?|set(?:embro)?|out(?:ubro)?|nov(?:embro)?|dez(?:embro)?)\b/i;
+const namedSlashDatePattern = /\b(\d{1,2})\s*[./-]\s*(jan(?:eiro)?|fev(?:ereiro)?|mar(?:ço|co)?|abr(?:il)?|mai(?:o)?|jun(?:ho)?|jul(?:ho)?|ago(?:sto)?|set(?:embro)?|out(?:ubro)?|nov(?:embro)?|dez(?:embro)?)\b/i;
 const numericDateOnlyPattern = /^\s*(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?\s*$/;
 const timeOnlyPattern = /^\s*([01]?\d|2[0-3]):([0-5]\d)\s*$/;
 const cardFinalPattern = /\bfinal\s+(\d{4})\b/i;
+const cardBrandDigitsPattern = /\b(?:visa|mastercard|master|elo|hipercard|amex|american\s+express)\D{0,24}(\d{4})\b/i;
+const paymentMetadataPattern = /^(?:por\s+aproxima[cç][aã]o|no\s+cr[eé]dito|no\s+d[eé]bito|cr[eé]dito|d[eé]bito|ontem|hoje|em\s+\d{1,2}\s*x)$/i;
 
 function normalizeLine(value: string) {
   return value.replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' ').trim();
@@ -55,12 +58,19 @@ function inferReferenceYear(text: string, fileName: string, dueDate?: string) {
   return new Date().getFullYear();
 }
 
-function namedDate(line: string, fallbackYear: number) {
-  const match = line.match(namedDatePattern);
+function dateFromNamedMatch(match: RegExpMatchArray | null, fallbackYear: number) {
   if (!match) return undefined;
   const month = monthMap[match[2].toLowerCase()];
   if (!month) return undefined;
   return `${fallbackYear}-${String(month).padStart(2, '0')}-${String(Number(match[1])).padStart(2, '0')}`;
+}
+
+function namedDate(line: string, fallbackYear: number) {
+  return dateFromNamedMatch(line.match(namedDatePattern), fallbackYear);
+}
+
+function namedSlashDate(line: string, fallbackYear: number) {
+  return dateFromNamedMatch(line.match(namedSlashDatePattern), fallbackYear);
 }
 
 function numericDate(line: string, fallbackYear: number) {
@@ -86,12 +96,22 @@ function inlineDate(line: string, fallbackYear: number) {
     return `${fallbackYear}-${String(Number(short[2])).padStart(2, '0')}-${String(Number(short[1])).padStart(2, '0')}`;
   }
 
-  return namedDate(line, fallbackYear);
+  return namedSlashDate(line, fallbackYear) || namedDate(line, fallbackYear);
+}
+
+function extractCardLastDigits(line: string) {
+  return line.match(cardFinalPattern)?.[1] || line.match(cardBrandDigitsPattern)?.[1];
+}
+
+function isCardMetadataLine(line: string) {
+  return Boolean(extractCardLastDigits(line));
 }
 
 function isSummaryOrNavigationLine(line: string) {
   const lower = line.toLowerCase();
   if (!lower) return true;
+  if (paymentMetadataPattern.test(line)) return true;
+  if (isCardMetadataLine(line)) return true;
   if (/^(ago|set|out|nov|dez|jan|fev|mar|abr|mai|jun|jul)(\s+(ago|set|out|nov|dez|jan|fev|mar|abr|mai|jun|jul)){1,}$/.test(lower)) return true;
   if (/^(faturas?|cart[aã]o\b|voltar\b|dashboard\b|documentos\b|movimenta[cç][oõ]es\b|metas\b|perfil\b)/i.test(line)) return true;
   if (/^(segunda|terça|terca|quarta|quinta|sexta|sábado|sabado|domingo)$/i.test(line)) return true;
@@ -101,10 +121,15 @@ function isSummaryOrNavigationLine(line: string) {
 function isDescriptionCandidate(line: string) {
   if (line.length < 2 || line.length > 120) return false;
   if (isSummaryOrNavigationLine(line)) return false;
-  if (cardFinalPattern.test(line)) return false;
   if (timeOnlyPattern.test(line)) return false;
   if (parseInstallment(line)) return false;
-  if (numericDateOnlyPattern.test(line) || namedDatePattern.test(line)) return false;
+  if (
+    numericDateOnlyPattern.test(line) ||
+    namedDatePattern.test(line) ||
+    namedSlashDatePattern.test(line)
+  ) {
+    return false;
+  }
   if (!/[a-zà-ÿ]/i.test(line)) return false;
   return true;
 }
@@ -113,10 +138,13 @@ function cleanDescription(line: string, amountText?: string) {
   let value = line;
   if (amountText) value = value.replace(amountText, ' ');
   return stripInstallment(value)
+    .replace(/\bem\s+\d{1,2}\s*x\b/gi, ' ')
     .replace(/R\s*\$/gi, ' ')
     .replace(/\b\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?\b/g, ' ')
+    .replace(namedSlashDatePattern, ' ')
     .replace(namedDatePattern, ' ')
     .replace(cardFinalPattern, ' ')
+    .replace(cardBrandDigitsPattern, ' ')
     .replace(/\b(?:[01]?\d|2[0-3]):[0-5]\d\b/g, ' ')
     .replace(/[|•›>]+/g, ' ')
     .replace(/\s{2,}/g, ' ')
@@ -159,6 +187,7 @@ export function parseImageTransactionList(
 
   let currentDate: string | undefined;
   let pendingDescription = '';
+  let pendingCardLastDigits: string | undefined;
   let afterItem = false;
 
   for (const line of lines) {
@@ -166,6 +195,21 @@ export function parseImageTransactionList(
     const amountMatches = [...line.matchAll(moneyPattern)];
     moneyPattern.lastIndex = 0;
     const hasAmount = amountMatches.length > 0;
+
+    const slashNamed = namedSlashDate(line, fallbackYear);
+    if (slashNamed && !hasAmount) {
+      const inlineTime = line.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
+      if (last && afterItem) {
+        last.date = slashNamed;
+        if (inlineTime) {
+          last.time = `${inlineTime[1].padStart(2, '0')}:${inlineTime[2]}`;
+        }
+        appendSource(last, line);
+      } else {
+        currentDate = slashNamed;
+      }
+      continue;
+    }
 
     const named = namedDate(line, fallbackYear);
     if (named && !hasAmount) {
@@ -194,10 +238,14 @@ export function parseImageTransactionList(
       continue;
     }
 
-    const cardFinal = line.match(cardFinalPattern);
-    if (!hasAmount && cardFinal && last && afterItem) {
-      last.cardLastDigits = cardFinal[1];
-      appendSource(last, line);
+    const detectedCardLastDigits = extractCardLastDigits(line);
+    if (!hasAmount && detectedCardLastDigits) {
+      if (last && afterItem) {
+        last.cardLastDigits = detectedCardLastDigits;
+        appendSource(last, line);
+      } else {
+        pendingCardLastDigits = detectedCardLastDigits;
+      }
       continue;
     }
 
@@ -205,6 +253,11 @@ export function parseImageTransactionList(
     if (!hasAmount && installment && last && afterItem) {
       last.installment = installment;
       appendSource(last, line);
+      continue;
+    }
+
+    if (!hasAmount && paymentMetadataPattern.test(line)) {
+      if (last && afterItem) appendSource(last, line);
       continue;
     }
 
@@ -229,7 +282,7 @@ export function parseImageTransactionList(
 
       const directDate = inlineDate(line, fallbackYear);
       const directInstallment = parseInstallment(line);
-      const directFinal = line.match(cardFinalPattern);
+      const directFinal = extractCardLastDigits(line);
       const directTime = line.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
 
       items.push({
@@ -237,12 +290,13 @@ export function parseImageTransactionList(
         amount,
         date: directDate || currentDate,
         time: directTime ? `${directTime[1].padStart(2, '0')}:${directTime[2]}` : undefined,
-        cardLastDigits: directFinal?.[1],
+        cardLastDigits: directFinal || pendingCardLastDigits,
         installment: directInstallment,
         sourceLine: line,
       });
 
       pendingDescription = '';
+      pendingCardLastDigits = undefined;
       afterItem = true;
       continue;
     }
@@ -268,7 +322,15 @@ export function looksLikeImageTransactionList(text: string, items: ExtractedDocu
     /extrato/,
     /movimenta[cç][oõ]es/,
     /transa[cç][oõ]es/,
+    /\bvisa\b/,
+    /\bmastercard\b/,
+    /\belo\b/,
+    /\bhipercard\b/,
+    /por\s+aproxima[cç][aã]o/,
+    /no\s+cr[eé]dito/,
+    /no\s+d[eé]bito/,
   ].filter((pattern) => pattern.test(lower)).length;
   const monetaryValues = [...text.matchAll(/(?:R\s*\$\s*)?\d+(?:\.\d{3})*,\d{2}/g)].length;
-  return contextSignals >= 1 && monetaryValues >= 2;
+  const detectedCardItems = items.filter((item) => item.cardLastDigits).length;
+  return monetaryValues >= 2 && (contextSignals >= 1 || detectedCardItems >= 2);
 }
