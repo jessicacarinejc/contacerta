@@ -45,6 +45,61 @@ Final 0652
     expect(looksLikeImageTransactionList(text, items)).toBe(true);
   });
 
+  it('reconhece uma lista de compras do app bancário com cartão Visa e várias despesas', () => {
+    const text = `
+Assai Atacadista
+Petrobras Visa 3499
+Por aproximação
+Ontem
+R$ 182,41
+em 2x
+no crédito
+Assai Atacadista R$ 10,90
+Petrobras Visa 3499
+Por aproximação
+Ontem
+no crédito
+Assai Atacadista R$ 38,60
+Petrobras Visa 3499
+Por aproximação
+Ontem
+no crédito
+Farmacia Merces R$ 28,11
+Petrobras Visa 3499
+Por aproximação
+Ontem
+no crédito
+Comercialde R$ 81,26
+Petrobras Visa 3499
+Por aproximação
+Ontem
+no crédito
+Mercadao R$ 9,56
+Petrobras Visa 3499
+Por aproximação
+Ter, 11/Ago às 09:00
+no crédito
+`;
+
+    const items = parseImageTransactionList(
+      text,
+      'Screenshot_2026-08-13-06-56-01-981_br.com.bb.android-edit.jpg',
+    );
+
+    expect(items).toHaveLength(6);
+    expect(items.map((item) => [item.description, item.amount])).toEqual([
+      ['Assai Atacadista', 182.41],
+      ['Assai Atacadista', 10.9],
+      ['Assai Atacadista', 38.6],
+      ['Farmacia Merces', 28.11],
+      ['Comercialde', 81.26],
+      ['Mercadao', 9.56],
+    ]);
+    expect(items.every((item) => item.cardLastDigits === '3499')).toBe(true);
+    expect(items[5]).toMatchObject({ date: '2026-08-11', time: '09:00' });
+    expect(looksLikeImageTransactionList(text, items)).toBe(true);
+  });
+
   it('associa data e parcela quando os metadados aparecem nas linhas seguintes', () => {
     const text = `
 Parcelas de compras anteriores
