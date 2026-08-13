@@ -2,7 +2,11 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use rusqlite::{params, Connection, DatabaseName, OpenFlags, OptionalExtension};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use std::{fs, path::PathBuf, time::Duration};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 use tauri::Manager;
 
 const DATABASE_FILE: &str = "conta-certa.sqlite3";
@@ -217,7 +221,7 @@ fn temp_database_path(app: &tauri::AppHandle, file_name: &str) -> Result<PathBuf
     Ok(path)
 }
 
-fn remove_database_sidecars(path: &PathBuf) {
+fn remove_database_sidecars(path: &Path) {
     for suffix in ["-wal", "-shm"] {
         let sidecar = PathBuf::from(format!("{}{suffix}", path.to_string_lossy()));
         let _ = fs::remove_file(sidecar);
