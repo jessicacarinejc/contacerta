@@ -22,7 +22,7 @@ export function buildMonthlyFinanceHistory(
   return Array.from({ length: monthCount }, (_, index) => {
     const date = startOfMonth(subMonths(referenceDate, monthCount - index - 1));
     const summary = totals(monthTransactions(validTransactions, date));
-    const label = format(date, 'MMM/yy', { locale: ptBR });
+    const label = format(date, 'MMM/yy', { locale: ptBR }).replace('.', '');
     return {
       month: label.charAt(0).toUpperCase() + label.slice(1),
       ...summary,
