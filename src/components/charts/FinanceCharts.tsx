@@ -6,7 +6,6 @@ import {
   CartesianGrid,
   Cell,
   Legend,
-  Line,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -15,53 +14,69 @@ import {
   YAxis,
 } from 'recharts';
 import { compactCurrency, toCurrency } from '../../lib/currency';
-
-const history = [
-  { month: 'Mar', income: 22400, expense: 15400, result: 7000, balance: 11800 },
-  { month: 'Abr', income: 23500, expense: 17200, result: 6300, balance: 12400 },
-  { month: 'Mai', income: 24800, expense: 16800, result: 8000, balance: 14100 },
-  { month: 'Jun', income: 23100, expense: 18100, result: 5000, balance: 15200 },
-  { month: 'Jul', income: 25700, expense: 17900, result: 7800, balance: 16900 },
-  { month: 'Ago', income: 27450, expense: 15230, result: 12220, balance: 18750 },
-];
+import type { MonthlyFinanceSummary } from '../../lib/dashboard-history';
 
 const formatTooltipValue = (value: unknown) =>
   toCurrency(Number(Array.isArray(value) ? (value[0] ?? 0) : (value ?? 0)));
 
-export function IncomeExpenseChart() {
+function ChartEmptyState() {
+  return (
+    <div className="chart-empty-state" role="status">
+      <strong>Seu histórico começa aqui</strong>
+      <span>Registre ou importe movimentações para visualizar a evolução financeira.</span>
+    </div>
+  );
+}
+
+export function IncomeExpenseChart({ data }: { data: MonthlyFinanceSummary[] }) {
+  if (!data.some((item) => item.income !== 0 || item.expense !== 0)) {
+    return <ChartEmptyState />;
+  }
+
   return (
     <div className="chart-box chart-large">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={history}>
+        <BarChart data={data} barGap={5}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="month" />
-          <YAxis tickFormatter={(value) => compactCurrency.format(value)} />
+          <XAxis dataKey="month" tickLine={false} axisLine={false} />
+          <YAxis tickFormatter={(value) => compactCurrency.format(value)} tickLine={false} axisLine={false} width={54} />
           <Tooltip formatter={(value) => formatTooltipValue(value)} />
           <Legend />
-          <Bar dataKey="income" name="Receitas" fill="#16a567" />
-          <Bar dataKey="expense" name="Despesas" fill="#ef5656" />
-          <Line type="monotone" dataKey="result" name="Resultado" stroke="#2674d9" />
+          <Bar dataKey="income" name="Receitas" fill="#279b48" radius={[5, 5, 0, 0]} maxBarSize={30} />
+          <Bar dataKey="expense" name="Despesas" fill="#e95454" radius={[5, 5, 0, 0]} maxBarSize={30} />
         </BarChart>
       </ResponsiveContainer>
     </div>
   );
 }
 
-export function BalanceChart() {
+export function BalanceChart({ data }: { data: MonthlyFinanceSummary[] }) {
+  if (!data.some((item) => item.income !== 0 || item.expense !== 0)) {
+    return <ChartEmptyState />;
+  }
+
   return (
     <div className="chart-box chart-medium">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={history}>
+        <AreaChart data={data}>
+          <defs>
+            <linearGradient id="resultGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#279b48" stopOpacity={0.25} />
+              <stop offset="95%" stopColor="#279b48" stopOpacity={0} />
+            </linearGradient>
+          </defs>
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="month" />
-          <YAxis tickFormatter={(value) => compactCurrency.format(value)} />
+          <XAxis dataKey="month" tickLine={false} axisLine={false} />
+          <YAxis tickFormatter={(value) => compactCurrency.format(value)} tickLine={false} axisLine={false} width={54} />
           <Tooltip formatter={(value) => formatTooltipValue(value)} />
           <Area
             type="monotone"
-            dataKey="balance"
-            name="Saldo"
-            stroke="#16a567"
-            fill="#dff5e9"
+            dataKey="result"
+            name="Resultado do mês"
+            stroke="#279b48"
+            strokeWidth={2.5}
+            fill="url(#resultGradient)"
+            activeDot={{ r: 5 }}
           />
         </AreaChart>
       </ResponsiveContainer>
@@ -74,6 +89,10 @@ export function CategoryChart({
 }: {
   data: Array<{ name: string; color: string; value: number }>;
 }) {
+  if (data.length === 0) {
+    return <ChartEmptyState />;
+  }
+
   return (
     <div className="category-chart-wrap">
       <div className="chart-box chart-donut">
