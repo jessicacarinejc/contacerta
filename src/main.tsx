@@ -8,6 +8,7 @@ import './entity-controls.css';
 import './branding.css';
 import './auth-theme.css';
 import './login-fixes.css';
+import './layout-refresh.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
