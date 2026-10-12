@@ -30,6 +30,8 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: android-actions/setup-android@v3
+        with:
+          packages: '' # sdkmanager 'tools' foi removido; componentes são instalados no passo seguinte
       - name: Install Android SDK components
         run: |
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;${BUILD_TOOLS_VERSION}" "ndk;${NDK_VERSION}"
