@@ -3,7 +3,9 @@
   "private": true,
   "version": "0.1.1",
   "type": "module",
-  "engines": { "node": ">=22.0.0" },
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -21,8 +23,8 @@
     "tauri:dev": "npm run icons && tauri dev",
     "tauri:build": "npm run icons && tauri build",
     "android:init": "node scripts/ensure-android.mjs",
-    "android:dev": "npm run android:init && npm run icons && tauri android dev",
-    "android:build:apk": "npm run android:init && npm run icons && tauri android build --target aarch64 --apk",
+    "android:dev": "npm run android:init && node scripts/prepare-android-dependencies.mjs && npm run icons && tauri android dev",
+    "android:build:apk": "npm run android:init && node scripts/prepare-android-dependencies.mjs && npm run icons && tauri android build --target aarch64 --apk",
     "release:sync": "node scripts/sync-version.mjs"
   },
   "dependencies": {
