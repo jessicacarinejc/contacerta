@@ -132,10 +132,6 @@ export function AppShell({ children }: PropsWithChildren) {
   const firstName = user.name.trim().split(/\s+/)[0] || 'você';
 
   useEffect(() => {
-    setOpen(false);
-  }, [location.pathname]);
-
-  useEffect(() => {
     if (!open) return;
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') setOpen(false);
