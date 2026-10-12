@@ -10,6 +10,7 @@ import {
 } from '../components/charts/FinanceCharts';
 import { Button, Card, CardHeader } from '../components/ui';
 import { toCurrency } from '../lib/currency';
+import { buildMonthlyFinanceHistory } from '../lib/dashboard-history';
 import { categoryTotals, monthTransactions, totals } from '../lib/finance';
 import { exportPdfNative } from '../lib/native-file-export';
 import { buildPixPayload, sanitizePixKey } from '../lib/pix';
@@ -60,6 +61,7 @@ export function ReportsPage() {
   const current = monthTransactions(transactions.filter((item) => !item.futureInstallment));
   const summary = totals(current);
   const data = categoryTotals(current, categories);
+  const history = buildMonthlyFinanceHistory(transactions);
   const thirdParties = useMemo(() => collectThirdParties(transactions), [transactions]);
   const [selectedThirdParty, setSelectedThirdParty] = useState('');
   const [reportMessage, setReportMessage] = useState('');
@@ -324,15 +326,15 @@ export function ReportsPage() {
       <div className="report-grid">
         <Card className="span-2">
           <CardHeader title="Desempenho financeiro" />
-          <IncomeExpenseChart />
+          <IncomeExpenseChart data={history} />
         </Card>
         <Card>
           <CardHeader title="Categorias" />
           <CategoryChart data={data} />
         </Card>
         <Card className="span-2">
-          <CardHeader title="Evolução do saldo" />
-          <BalanceChart />
+          <CardHeader title="Resultado por mês" description="Receitas menos despesas registradas" />
+          <BalanceChart data={history} />
         </Card>
         <Card>
           <div className="feature-callout vertical">
